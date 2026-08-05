@@ -1,0 +1,24 @@
+# ============================================================
+# Face Recognition Pipeline - pip requirements
+# ============================================================
+# Cài đặt: pip install -r requirements.txt
+# (Khuyến nghị dùng environment.yml nếu có Miniconda/Anaconda)
+# ============================================================
+
+# Numerical computing (cosine similarity, array ops)
+numpy==2.2.5
+
+# Image loading for database preprocessing
+Pillow==12.2.0
+
+# OpenCV (webcam capture + display)
+opencv-python>=4.8.0
+
+# Progress bar during DB loading
+tqdm>=4.65.0
+
+# Core ONNX Runtime (CPU-only)
+onnxruntime>=1.16.0
+
+# InsightFace (face detection + recognition)
+insightface
