@@ -21,14 +21,20 @@ Pipeline nhận diện khuôn mặt theo thời gian thực sử dụng **Insigh
 ## 📁 Cấu trúc thư mục
 
 ```
-smartCam/
-├── face_recognition_pipeline.py   ← Pipeline chính
+OmniSense/
+├── face_recognition_pipeline.py   ← Pipeline chính (CLI)
 ├── benchmark.py                   ← Công cụ kiểm tra hiệu suất
 ├── requirements.txt               ← Danh sách thư viện
 ├── README.md                      ← File này
+├── backend/                       ← Backend API (Flask)
+│   ├── app.py                     ← Server chính
+│   └── requirements.txt           ← Dependencies backend
+├── web/                           ← Giao diện Web
+│   ├── index.html                 ← Trang chính
+│   ├── index.css                  ← Stylesheet
+│   └── app.js                     ← Logic frontend
 └── face_recognition/
     └── database/
-        ├── README.md              ← Hướng dẫn thêm ảnh
         ├── nguyen_van_a/          ← Mỗi thư mục = 1 người
         │   ├── anh1.jpg
         │   └── anh2.jpg
@@ -104,13 +110,93 @@ Kết quả mẫu:
 [21:00:02] Speedup:             135.6x
 ```
 
-### Bước 5 — Chạy pipeline
+### Bước 5 — Chạy pipeline (CLI)
 
 ```bash
 python face_recognition_pipeline.py
 ```
 
 Lần đầu chạy, InsightFace sẽ tự động tải model về `C:\Users\<tên_user>\.insightface\models\buffalo_sc\` (Windows).
+
+---
+
+## 🌐 Giao diện Web (Web UI)
+
+Ngoài pipeline CLI, OmniSense cung cấp **giao diện web** với 4 chức năng chính:
+
+| Chức năng | Mô tả |
+|---|---|
+| 📷 **Camera nhận diện** | Stream webcam với nhận diện khuôn mặt thời gian thực |
+| 📝 **Đăng ký khuôn mặt** | Thêm người mới với họ tên, chức vụ, giới tính, ảnh |
+| 📋 **Danh sách đã đăng ký** | Xem, tìm kiếm, chỉnh sửa, xoá người đã đăng ký |
+| ⚙️ **Cài đặt model** | Chọn model, threshold, CPU threads, detection size |
+
+### Bước 1 — Cài thêm thư viện cho backend
+
+```bash
+# Đảm bảo đang trong môi trường conda
+conda activate smartcam
+
+# Cài Flask và CORS
+pip install flask flask-cors
+```
+
+### Bước 2 — Chạy backend server
+
+```bash
+# Di chuyển vào thư mục dự án
+cd d:\Project\OmniSense
+
+# Chạy backend
+python backend/app.py
+```
+
+Kết quả khi khởi động thành công:
+```
+[00:00:00] INFO - ============================================================
+[00:00:00] INFO -   OMNISENSE BACKEND API
+[00:00:00] INFO -   Web UI: http://localhost:5000
+[00:00:00] INFO -   Database: d:\Project\OmniSense\face_recognition\database
+[00:00:00] INFO - ============================================================
+[00:00:05] INFO - Model sẵn sàng! Database: 3 người
+```
+
+### Bước 3 — Mở giao diện web
+
+Mở trình duyệt và truy cập: **http://localhost:5000**
+
+> 💡 Backend sẽ tự động:
+> - Serve giao diện web tại `/`
+> - Khởi tạo model InsightFace trong nền
+> - Load database từ `face_recognition/database/`
+> - Tự reload database khi có đăng ký hoặc xoá mới
+
+### Kiến trúc hệ thống
+
+```
+Trình duyệt (port 5000)  ←→  Flask Backend  ←→  InsightFace + ONNX Runtime
+     │                            │                        │
+     ├─ Đăng ký ──────→  POST /api/users  ──→  Lưu ảnh vào database/
+     ├─ Danh sách ────→  GET  /api/users  ──→  Đọc từ database/
+     ├─ Camera ───────→  GET  /api/video_feed → MJPEG stream nhận diện
+     └─ Cài đặt ─────→  POST /api/settings ─→  Lưu settings.json
+```
+
+### API Endpoints
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/api/status` | Trạng thái model & database |
+| `GET` | `/api/users` | Danh sách người đã đăng ký |
+| `POST` | `/api/users` | Đăng ký khuôn mặt mới (multipart/form-data) |
+| `PUT` | `/api/users/<id>` | Chỉnh sửa thông tin |
+| `DELETE` | `/api/users/<id>` | Xoá người đã đăng ký |
+| `GET` | `/api/settings` | Lấy cài đặt hiện tại |
+| `POST` | `/api/settings` | Cập nhật cài đặt |
+| `POST` | `/api/recognize` | Nhận diện khuôn mặt từ ảnh |
+| `POST` | `/api/camera/start` | Khởi động camera |
+| `POST` | `/api/camera/stop` | Dừng camera |
+| `GET` | `/api/video_feed` | MJPEG video stream |
 
 ---
 

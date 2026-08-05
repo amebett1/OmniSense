@@ -1,0 +1,14 @@
+# ============================================================
+# OmniSense Backend - pip requirements
+# ============================================================
+# Cài đặt: pip install -r backend/requirements.txt
+# ============================================================
+
+# Web framework
+flask>=3.0.0
+
+# CORS support (cho phép web frontend gọi API)
+flask-cors>=4.0.0
+
+# Các thư viện từ pipeline chính (đã có trong requirements.txt gốc)
+# numpy, opencv-python, insightface, onnxruntime, Pillow, tqdm

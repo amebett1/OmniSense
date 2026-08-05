@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OmniSense - Hệ thống nhận diện khuôn mặt thông minh theo thời gian thực">
+    <title>OmniSense — Nhận Diện Khuôn Mặt</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- ===== HEADER ===== -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                        <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>
+                    </svg>
+                </div>
+                <span class="logo-text">OmniSense</span>
+            </div>
+            <nav class="header-nav">
+                <button class="nav-btn active" data-section="camera" id="nav-camera">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    <span>Camera</span>
+                </button>
+                <button class="nav-btn" data-section="register" id="nav-register">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    <span>Đăng Ký</span>
+                </button>
+                <button class="nav-btn" data-section="list" id="nav-list">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Danh Sách</span>
+                </button>
+                <button class="nav-btn" data-section="settings" id="nav-settings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Cài Đặt</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <!-- ===== SECTION 1: CAMERA ===== -->
+        <section class="section section--active" id="section-camera">
+            <div class="section-header">
+                <h1>Camera Nhận Diện</h1>
+                <p class="section-subtitle">Nhận diện khuôn mặt theo thời gian thực</p>
+            </div>
+            <div class="camera-layout">
+                <div class="camera-feed-container">
+                    <div class="camera-viewport" id="camera-viewport">
+                        <video id="camera-video" autoplay playsinline muted></video>
+                        <canvas id="camera-overlay" class="camera-overlay"></canvas>
+                        <div class="camera-placeholder" id="camera-placeholder">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            <p>Nhấn nút bên dưới để khởi động camera</p>
+                        </div>
+                        <div class="camera-hud">
+                            <span class="hud-badge hud-badge--live" id="hud-live" style="display:none;">
+                                <span class="live-dot"></span> LIVE
+                            </span>
+                            <span class="hud-badge" id="hud-fps">FPS: --</span>
+                        </div>
+                    </div>
+                    <div class="camera-controls">
+                        <button class="btn btn--primary btn--glow" id="btn-start-camera">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Khởi động Camera
+                        </button>
+                        <button class="btn btn--secondary" id="btn-stop-camera" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                            Dừng Camera
+                        </button>
+                        <button class="btn btn--ghost" id="btn-screenshot">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                            Chụp Ảnh
+                        </button>
+                    </div>
+                </div>
+                <div class="camera-sidebar">
+                    <div class="stats-card">
+                        <h3>Thống Kê</h3>
+                        <div class="stat-row">
+                            <span class="stat-label">Khuôn mặt phát hiện</span>
+                            <span class="stat-value" id="stat-faces">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Đã nhận diện</span>
+                            <span class="stat-value stat-value--success" id="stat-recognized">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Không xác định</span>
+                            <span class="stat-value stat-value--danger" id="stat-unknown">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Thời gian xử lý</span>
+                            <span class="stat-value" id="stat-inference">-- ms</span>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <h3>Lịch Sử Nhận Diện</h3>
+                        <div class="recognition-log" id="recognition-log">
+                            <div class="log-empty">Chưa có dữ liệu nhận diện</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION 2: REGISTER ===== -->
+        <section class="section" id="section-register">
+            <div class="section-header">
+                <h1>Đăng Ký Khuôn Mặt</h1>
+                <p class="section-subtitle">Thêm khuôn mặt mới vào hệ thống nhận diện</p>
+            </div>
+            <div class="register-layout">
+                <form class="register-form" id="register-form">
+                    <div class="form-group">
+                        <label for="reg-name" class="form-label">Họ và Tên <span class="required">*</span></label>
+                        <input type="text" id="reg-name" class="form-input" placeholder="Nhập họ và tên đầy đủ" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Chức Vụ <span class="required">*</span></label>
+                            <div class="radio-group" id="reg-role">
+                                <label class="radio-card">
+                                    <input type="radio" name="role" value="lecturer" required>
+                                    <div class="radio-card-body">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                        <span>Giảng viên</span>
+                                    </div>
+                                </label>
+                                <label class="radio-card">
+                                    <input type="radio" name="role" value="student">
+                                    <div class="radio-card-body">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg>
+                                        <span>Sinh viên</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Giới Tính <span class="required">*</span></label>
+                            <div class="radio-group" id="reg-gender">
+                                <label class="radio-card">
+                                    <input type="radio" name="gender" value="male" required>
+                                    <div class="radio-card-body">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="14" r="5"/><line x1="19" y1="5" x2="13.6" y2="10.4"/><polyline points="19 5 19 10"/><polyline points="19 5 14 5"/></svg>
+                                        <span>Nam</span>
+                                    </div>
+                                </label>
+                                <label class="radio-card">
+                                    <input type="radio" name="gender" value="female">
+                                    <div class="radio-card-body">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="9" r="5"/><line x1="12" y1="14" x2="12" y2="22"/><line x1="9" y1="19" x2="15" y2="19"/></svg>
+                                        <span>Nữ</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ảnh Cá Nhân <span class="required">*</span></label>
+                        <div class="photo-upload" id="photo-upload">
+                            <input type="file" id="reg-photo" accept="image/*" multiple hidden>
+                            <div class="photo-dropzone" id="photo-dropzone">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                <p>Kéo thả ảnh vào đây hoặc <span class="link">chọn file</span></p>
+                                <small>Hỗ trợ JPG, PNG, BMP — Tối đa 5 ảnh</small>
+                            </div>
+                            <div class="photo-preview-list" id="photo-preview-list"></div>
+                        </div>
+                    </div>
+                    <div class="form-group" style="display:flex;gap:12px;">
+                        <button class="btn btn--primary btn--glow btn--lg" type="submit" id="btn-register">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                            Đăng Ký
+                        </button>
+                        <button class="btn btn--ghost btn--lg" type="reset" id="btn-reset-form">Xoá Form</button>
+                    </div>
+                </form>
+                <div class="register-preview">
+                    <div class="preview-card" id="preview-card">
+                        <div class="preview-avatar" id="preview-avatar">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-4 3.5-7 7-7s7 3 7 7"/></svg>
+                        </div>
+                        <div class="preview-name" id="preview-name">Họ và Tên</div>
+                        <div class="preview-badge" id="preview-badge">Chức vụ</div>
+                        <div class="preview-gender" id="preview-gender">Giới tính</div>
+                        <small class="preview-hint">Xem trước thẻ đăng ký</small>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION 3: LIST ===== -->
+        <section class="section" id="section-list">
+            <div class="section-header">
+                <h1>Danh Sách Đã Đăng Ký</h1>
+                <p class="section-subtitle">Quản lý khuôn mặt đã được đăng ký trong hệ thống</p>
+            </div>
+            <div class="list-toolbar">
+                <div class="search-box">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="search-input" class="search-input" placeholder="Tìm kiếm theo tên...">
+                </div>
+                <div class="filter-group">
+                    <select id="filter-role" class="form-select">
+                        <option value="all">Tất cả chức vụ</option>
+                        <option value="lecturer">Giảng viên</option>
+                        <option value="student">Sinh viên</option>
+                    </select>
+                    <select id="filter-gender" class="form-select">
+                        <option value="all">Tất cả giới tính</option>
+                        <option value="male">Nam</option>
+                        <option value="female">Nữ</option>
+                    </select>
+                </div>
+                <span class="list-count" id="list-count">0 người đã đăng ký</span>
+            </div>
+            <div class="user-grid" id="user-grid">
+                <div class="empty-state" id="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <h3>Chưa có ai đăng ký</h3>
+                    <p>Hãy thêm khuôn mặt mới từ tab "Đăng Ký"</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION 4: SETTINGS ===== -->
+        <section class="section" id="section-settings">
+            <div class="section-header">
+                <h1>Cài Đặt Model Nhận Diện</h1>
+                <p class="section-subtitle">Tuỳ chỉnh cấu hình model và tham số nhận diện</p>
+            </div>
+            <div class="settings-layout">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+                        <h3>Chọn Model</h3>
+                    </div>
+                    <div class="model-selector">
+                        <label class="model-option model-option--active" id="model-buffalo-sc">
+                            <input type="radio" name="model" value="buffalo_sc" checked>
+                            <div class="model-option-body">
+                                <div class="model-option-top">
+                                    <span class="model-name">buffalo_sc</span>
+                                    <span class="model-tag model-tag--fast">⚡ Nhanh</span>
+                                </div>
+                                <p class="model-desc">Tốc độ cao, phù hợp cho thiết bị cấu hình thấp. Độ chính xác tốt.</p>
+                                <div class="model-stats">
+                                    <span>~100 MB</span>
+                                    <span>Threshold: 0.40</span>
+                                </div>
+                            </div>
+                        </label>
+                        <label class="model-option" id="model-buffalo-l">
+                            <input type="radio" name="model" value="buffalo_l">
+                            <div class="model-option-body">
+                                <div class="model-option-top">
+                                    <span class="model-name">buffalo_l</span>
+                                    <span class="model-tag model-tag--accurate">🎯 Chính xác</span>
+                                </div>
+                                <p class="model-desc">Độ chính xác cao hơn, phù hợp khi cần nhận diện chặt chẽ.</p>
+                                <div class="model-stats">
+                                    <span>~300 MB</span>
+                                    <span>Threshold: 0.50</span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                        <h3>Tham Số</h3>
+                    </div>
+                    <div class="settings-params">
+                        <div class="param-group">
+                            <label class="param-label" for="param-threshold">
+                                Cosine Threshold
+                                <span class="param-value" id="threshold-value">0.40</span>
+                            </label>
+                            <input type="range" id="param-threshold" class="param-slider" min="0.20" max="0.70" step="0.01" value="0.40">
+                            <div class="param-hint">
+                                <span>0.20 (Lỏng)</span>
+                                <span>0.70 (Chặt)</span>
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label" for="param-threads">
+                                CPU Threads
+                                <span class="param-value" id="threads-value">8</span>
+                            </label>
+                            <input type="range" id="param-threads" class="param-slider" min="1" max="16" step="1" value="8">
+                            <div class="param-hint">
+                                <span>1 thread</span>
+                                <span>16 threads</span>
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label" for="param-det-size">
+                                Detection Size
+                            </label>
+                            <select id="param-det-size" class="form-select">
+                                <option value="320">320 × 320 (Nhanh hơn)</option>
+                                <option value="640" selected>640 × 640 (Khuyến nghị)</option>
+                            </select>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label" for="param-camera-index">
+                                Camera Index
+                            </label>
+                            <select id="param-camera-index" class="form-select">
+                                <option value="0">Camera 0 (Mặc định)</option>
+                                <option value="1">Camera 1</option>
+                                <option value="2">Camera 2</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        <h3>Execution Provider</h3>
+                    </div>
+                    <div class="provider-list">
+                        <label class="toggle-row">
+                            <span class="toggle-label">
+                                <strong>CPUExecutionProvider</strong>
+                                <small>Mặc định — chạy trên CPU</small>
+                            </span>
+                            <input type="checkbox" class="toggle-switch" checked disabled>
+                        </label>
+                        <label class="toggle-row">
+                            <span class="toggle-label">
+                                <strong>CUDAExecutionProvider</strong>
+                                <small>Yêu cầu GPU NVIDIA + CUDA toolkit</small>
+                            </span>
+                            <input type="checkbox" class="toggle-switch" id="toggle-cuda">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn--primary btn--glow btn--lg" id="btn-save-settings">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Lưu Cài Đặt
+                    </button>
+                    <button class="btn btn--ghost btn--lg" id="btn-reset-settings">Khôi Phục Mặc Định</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ===== EDIT MODAL ===== -->
+    <div class="modal-overlay" id="edit-modal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Chỉnh Sửa Thông Tin</h2>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <form id="edit-form" class="modal-body">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label class="form-label" for="edit-name">Họ và Tên</label>
+                    <input type="text" id="edit-name" class="form-input" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Chức Vụ</label>
+                        <select id="edit-role" class="form-select">
+                            <option value="lecturer">Giảng viên</option>
+                            <option value="student">Sinh viên</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Giới Tính</label>
+                        <select id="edit-gender" class="form-select">
+                            <option value="male">Nam</option>
+                            <option value="female">Nữ</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn--primary" type="submit">Lưu Thay Đổi</button>
+                    <button class="btn btn--ghost" type="button" id="modal-cancel">Huỷ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
