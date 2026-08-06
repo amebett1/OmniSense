@@ -1,0 +1,114 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cookie
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Environments & Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# InsightFace / AI Models & Weights
+*.onnx
+*.pth
+*.pt
+*.bin
+*.h5
+*.pkl
+*.pb
+*.tflite
+models/
+weights/
+.insightface/
+
+# App Runtime Data & Logs
+backend/settings.json
+*.log
+logs/
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Agent / Tool Cache
+.antigravity/
+.gemini/
+
+# Database registered photos
+face_recognition/database/*
+!face_recognition/database/README.md
+!face_recognition/database/.gitkeep
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+
+# Ảnh của database
+.jpg
+.png 
+.webp
