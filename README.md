@@ -1,54 +1,52 @@
-# 🎯 Face Recognition Pipeline
+# OmniSense — Hệ Thống Nhận Diện Khuôn Mặt (Web Application)
 
-Pipeline nhận diện khuôn mặt theo thời gian thực sử dụng **InsightFace** + **ONNX Runtime (CPU)**.
+Ứng dụng Web nhận diện khuôn mặt theo thời gian thực tích hợp camera, sử dụng **InsightFace**, **ONNX Runtime (CPU)** và **Flask Backend**.
 
 ---
 
-## 📋 Yêu cầu hệ thống
+## Yêu cầu hệ thống
 
 | Thành phần | Yêu cầu tối thiểu |
 |---|---|
-| **Python** | 3.9 trở lên |
+| **Python** | 3.9 trở lên (khuyên dùng Python 3.10) |
 | **RAM** | 4 GB (khuyến nghị 8 GB) |
-| **CPU** | 4 nhân trở lên (tối ưu nhất với 8 nhân) |
+| **CPU** | 4 nhân trở lên |
 | **Webcam** | Bất kỳ webcam USB hoặc tích hợp |
 | **OS** | Windows 10/11, Ubuntu 20.04+, macOS 12+ |
 
-> ⚠️ Pipeline này chạy hoàn toàn trên **CPU** — không cần GPU.
+> Hệ thống chạy mặc định trên **CPU** — không bắt buộc có GPU.
 
 ---
 
-## 📁 Cấu trúc thư mục
+## Cấu trúc thư mục
 
 ```
 OmniSense/
-├── face_recognition_pipeline.py   ← Pipeline chính (CLI)
+├── face_recognition_pipeline.py   ← Core engine nhận diện khuôn mặt
 ├── benchmark.py                   ← Công cụ kiểm tra hiệu suất
-├── requirements.txt               ← Danh sách thư viện
-├── README.md                      ← File này
-├── backend/                       ← Backend API (Flask)
+├── requirements.txt               ← Thư viện pipeline chính
+├── environment.yml                ← File cấu hình môi trường Conda
+├── README.md                      ← File hướng dẫn này
+├── backend/                       ← Backend Server (Flask API)
 │   ├── app.py                     ← Server chính
-│   └── requirements.txt           ← Dependencies backend
-├── web/                           ← Giao diện Web
-│   ├── index.html                 ← Trang chính
+│   ├── settings.json              ← File lưu cài đặt hệ thống
+│   └── requirements.txt           ← Dependencies backend (Flask, CORS)
+├── web/                           ← Giao diện Web (Frontend)
+│   ├── index.html                 ← HTML giao diện
 │   ├── index.css                  ← Stylesheet
-│   └── app.js                     ← Logic frontend
+│   └── app.js                     ← Logic điều khiển UI
 └── face_recognition/
-    └── database/
-        ├── nguyen_van_a/          ← Mỗi thư mục = 1 người
-        │   ├── anh1.jpg
-        │   └── anh2.jpg
-        └── tran_thi_b/
-            └── anh1.png
+    ├── database/                  ← Dữ liệu thư mục khuôn mặt đã đăng ký
+    └── metadata.json              ← Thông tin thông tin người dùng
 ```
 
 ---
 
-## 🚀 Hướng dẫn cài đặt & chạy
+## Hướng dẫn cài đặt & chạy ứng dụng Web
 
 ### Bước 1 — Tạo môi trường Conda
 
-Mở **Anaconda Prompt** (hoặc terminal đã kích hoạt conda) và chạy:
+Mở **Anaconda Prompt** (hoặc Terminal đã kích hoạt Conda) và chạy:
 
 ```bash
 # Tạo môi trường mới tên "smartcam" với Python 3.10
@@ -58,284 +56,178 @@ conda create -n smartcam python=3.10 -y
 conda activate smartcam
 ```
 
-> 💡 Từ đây, mọi lệnh `pip` đều chạy trong môi trường `smartcam` — không ảnh hưởng hệ thống.
+> Từ đây, mọi lệnh `pip` đều chạy trong môi trường `smartcam` độc lập.
 
 ### Bước 2 — Cài đặt thư viện
 
-```bash
-# Di chuyển vào thư mục dự án
-cd d:\Project\smartCam
+Di chuyển vào thư mục dự án và cài đặt các thư viện cần thiết:
 
-# Cài tất cả dependencies
+```bash
+# Di chuyển vào thư mục dự án OmniSense
+cd d:\Coding\OmniSense
+
+# Cài đặt thư viện core pipeline (InsightFace, OpenCV, ONNX Runtime...)
 pip install -r requirements.txt
+
+# Cài đặt thư viện backend (Flask, Flask-CORS)
+pip install -r backend/requirements.txt
 ```
 
-> ⏳ Lần đầu chạy sẽ mất vài phút để tải model InsightFace (~300 MB).
+> ⏳ **Lưu ý:** Lần đầu khởi chạy, ứng dụng sẽ tự động tải model InsightFace (`buffalo_sc` ~100 MB).
 
-### Bước 3 — Thêm ảnh vào database
+### Bước 3 — Chạy Backend Server
 
-Tạo **một thư mục con cho mỗi người** bên trong `face_recognition/database/`:
-
-```
-face_recognition/database/
-├── nguyen_van_a/       ← Tên thư mục = tên hiển thị trên màn hình
-│   ├── anh1.jpg        ← Nên có 2–5 ảnh/người
-│   └── anh2.jpg
-├── tran_thi_b/
-│   └── photo.jpg
-└── le_van_c/
-    ├── front.jpg
-    └── side.jpg
-```
-
-**Lưu ý khi chụp ảnh đăng ký:**
-- ✅ Ảnh rõ nét, đủ sáng, khuôn mặt nhìn thẳng vào camera
-- ✅ Mỗi người nên có **2–5 ảnh** từ các góc độ / ánh sáng khác nhau
-- ✅ Định dạng hỗ trợ: `.jpg`, `.jpeg`, `.png`, `.bmp`
-- ❌ Tránh ảnh mờ, che mặt, đeo khẩu trang
-
-### Bước 4 — (Tuỳ chọn) Kiểm tra cấu hình
+Chạy file `app.py` để khởi động máy chủ Flask Backend:
 
 ```bash
-python benchmark.py
-```
-
-Kết quả mẫu:
-```
-[21:00:01] ONNX Runtime Execution Providers:
-[21:00:01]   - CPUExecutionProvider
-[21:00:01] ONNX Runtime version: 1.18.0
-[21:00:02] Batch  (matrix @):   0.0021 ms/query
-[21:00:02] Loop   (python for): 0.2847 ms/query
-[21:00:02] Speedup:             135.6x
-```
-
-### Bước 5 — Chạy pipeline (CLI)
-
-```bash
-python face_recognition_pipeline.py
-```
-
-Lần đầu chạy, InsightFace sẽ tự động tải model về `C:\Users\<tên_user>\.insightface\models\buffalo_sc\` (Windows).
-
----
-
-## 🌐 Giao diện Web (Web UI)
-
-Ngoài pipeline CLI, OmniSense cung cấp **giao diện web** với 4 chức năng chính:
-
-| Chức năng | Mô tả |
-|---|---|
-| 📷 **Camera nhận diện** | Stream webcam với nhận diện khuôn mặt thời gian thực |
-| 📝 **Đăng ký khuôn mặt** | Thêm người mới với họ tên, chức vụ, giới tính, ảnh |
-| 📋 **Danh sách đã đăng ký** | Xem, tìm kiếm, chỉnh sửa, xoá người đã đăng ký |
-| ⚙️ **Cài đặt model** | Chọn model, threshold, CPU threads, detection size |
-
-### Bước 1 — Cài thêm thư viện cho backend
-
-```bash
-# Đảm bảo đang trong môi trường conda
-conda activate smartcam
-
-# Cài Flask và CORS
-pip install flask flask-cors
-```
-
-### Bước 2 — Chạy backend server
-
-```bash
-# Di chuyển vào thư mục dự án
-cd d:\Project\OmniSense
-
-# Chạy backend
 python backend/app.py
 ```
 
-Kết quả khi khởi động thành công:
+Khi máy chủ khởi chạy thành công, log sẽ hiển thị:
 ```
-[00:00:00] INFO - ============================================================
-[00:00:00] INFO -   OMNISENSE BACKEND API
-[00:00:00] INFO -   Web UI: http://localhost:5000
-[00:00:00] INFO -   Database: d:\Project\OmniSense\face_recognition\database
-[00:00:00] INFO - ============================================================
-[00:00:05] INFO - Model sẵn sàng! Database: 3 người
+[INFO] ============================================================
+[INFO]   OMNISENSE BACKEND API
+[INFO]   Web UI: http://localhost:5000
+[INFO]   Database: d:\Coding\OmniSense\face_recognition\database
+[INFO] ============================================================
+[INFO] Model sẵn sàng! Database: X người
 ```
 
-### Bước 3 — Mở giao diện web
+### Bước 4 — Mở giao diện Web
 
-Mở trình duyệt và truy cập: **http://localhost:5000**
+Mở trình duyệt web bất kỳ (Chrome, Edge, Firefox, Brave...) và truy cập:
+
+👉 **http://localhost:5000** (hoặc **http://127.0.0.1:5000**)
 
 > 💡 Backend sẽ tự động:
-> - Serve giao diện web tại `/`
-> - Khởi tạo model InsightFace trong nền
-> - Load database từ `face_recognition/database/`
-> - Tự reload database khi có đăng ký hoặc xoá mới
+> - Serve giao diện Web tại trang chủ (`/`).
+> - Khởi tạo mô hình InsightFace và nạp dữ liệu khuôn mặt trong nền.
+> - Xử lý stream webcam và nhận diện theo thời gian thực.
 
-### Kiến trúc hệ thống
+---
+
+## 🌐 Tính năng chính trên Giao diện Web
+
+OmniSense cung cấp giao diện Web trực quan với 4 nhóm tính năng chính:
+
+| Chức năng | Mô tả chi tiết |
+|---|---|
+| 📷 **Camera nhận diện** | Stream webcam hiển thị khung nhận diện & tên người dùng thời gian thực (MJPEG Stream) |
+| 📝 **Đăng ký khuôn mặt** | Thêm người mới trực tiếp trên Web với họ tên, chức vụ, giới tính và tải lên ảnh khuôn mặt |
+| 📋 **Danh sách đã đăng ký** | Quản lý danh sách người dùng, xem ảnh cá nhân, tìm kiếm, chỉnh sửa thông tin hoặc xóa |
+| ⚙️ **Cài đặt model** | Tinh chỉnh trực tiếp Model (`buffalo_sc` / `buffalo_l`), Threshold, số CPU threads, Camera Index |
+
+---
+
+## Kiến trúc hệ thống & API Endpoints
+
+### Sơ đồ hoạt động
 
 ```
-Trình duyệt (port 5000)  ←→  Flask Backend  ←→  InsightFace + ONNX Runtime
-     │                            │                        │
-     ├─ Đăng ký ──────→  POST /api/users  ──→  Lưu ảnh vào database/
-     ├─ Danh sách ────→  GET  /api/users  ──→  Đọc từ database/
-     ├─ Camera ───────→  GET  /api/video_feed → MJPEG stream nhận diện
-     └─ Cài đặt ─────→  POST /api/settings ─→  Lưu settings.json
+Trình duyệt Web (Port 5000)  ←→  Flask Backend Server  ←→  InsightFace + ONNX Runtime Engine
+         │                              │                                 │
+         ├─ Đăng ký ─────────→  POST /api/users    ──→  Lưu ảnh & metadata vào database/
+         ├─ Danh sách ───────→  GET  /api/users    ──→  Đọc danh sách từ database/
+         ├─ Camera Stream ───→  GET  /api/video_feed ─→ MJPEG Stream khung hình nhận diện
+         └─ Cài đặt ─────────→  POST /api/settings ──→  Cập nhật cấu hình settings.json
 ```
 
 ### API Endpoints
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| `GET` | `/api/status` | Trạng thái model & database |
-| `GET` | `/api/users` | Danh sách người đã đăng ký |
-| `POST` | `/api/users` | Đăng ký khuôn mặt mới (multipart/form-data) |
-| `PUT` | `/api/users/<id>` | Chỉnh sửa thông tin |
-| `DELETE` | `/api/users/<id>` | Xoá người đã đăng ký |
-| `GET` | `/api/settings` | Lấy cài đặt hiện tại |
-| `POST` | `/api/settings` | Cập nhật cài đặt |
-| `POST` | `/api/recognize` | Nhận diện khuôn mặt từ ảnh |
-| `POST` | `/api/camera/start` | Khởi động camera |
-| `POST` | `/api/camera/stop` | Dừng camera |
-| `GET` | `/api/video_feed` | MJPEG video stream |
+| `GET` | `/api/status` | Kiểm tra trạng thái model, database, camera, FPS |
+| `GET` | `/api/users` | Lấy danh sách người đã đăng ký |
+| `POST` | `/api/users` | Đăng ký người dùng mới (gửi `multipart/form-data`) |
+| `PUT` | `/api/users/<id>` | Cập nhật thông tin người dùng |
+| `DELETE` | `/api/users/<id>` | Xóa người dùng và dữ liệu ảnh |
+| `POST` | `/api/users/<user_id>/photos` | Thêm ảnh mới cho người dùng |
+| `DELETE` | `/api/users/<user_id>/photos/<photo_name>` | Xóa 1 ảnh của người dùng |
+| `GET` | `/api/settings` | Đọc cấu hình hiện tại |
+| `POST` | `/api/settings` | Cập nhật cấu hình hệ thống |
+| `POST` | `/api/recognize` | Nhận diện khuôn mặt từ ảnh gửi lên |
+| `POST` | `/api/camera/start` | Khởi động camera nhận diện |
+| `POST` | `/api/camera/stop` | Dừng camera nhận diện |
+| `GET` | `/api/video_feed` | Stream video MJPEG thời gian thực |
 
 ---
 
-## 🎮 Phím điều khiển
+## Tinh chỉnh cấu hình
 
-| Phím | Chức năng |
+Bạn có thể chỉnh sửa cấu hình trực tiếp trong phần **Cài đặt** trên Web UI hoặc thay đổi file `backend/settings.json`:
+
+```json
+{
+  "model": "buffalo_sc",
+  "threshold": 0.40,
+  "threads": 8,
+  "det_size": 640,
+  "camera_index": 0,
+  "cuda": false
+}
+```
+
+### Gợi ý Ngưỡng nhận diện (Cosine Threshold)
+
+| Threshold | Đặc điểm |
 |---|---|
-| `Q` hoặc `ESC` | Thoát chương trình |
-| `S` | Chụp screenshot (lưu vào thư mục `screenshots/`) |
+| `0.35` | Rất chặt — hạn chế tối đa nhận nhầm, nhưng có thể bỏ sót khi góc mặt khó |
+| `0.40` | **Khuyến nghị Mặc định** cho model `buffalo_sc` |
+| `0.45` | Nhận dễ hơn — phù hợp khi điều kiện ánh sáng yếu |
+| `0.50` | Khuyên dùng khi chuyển sang model `buffalo_l` |
 
----
+### So sánh các Model
 
-## 🖥️ Giao diện hiển thị
-
-```
-┌─────────────────────────────────────┐
-│  Faces: 2                           │
-│                                     │
-│  ┌──────────────┐                   │
-│  │ nguyen_van_a │  (bounding box    │
-│  │    (0.87)    │   màu xanh lá)    │
-│  └──────────────┘                   │
-│                                     │
-│  ┌──────────────┐                   │
-│  │   Unknown    │  (bounding box    │
-│  │    (0.31)    │   màu đỏ)         │
-│  └──────────────┘                   │
-│                                     │
-│  FPS: 24.3                          │
-│  Inference: 41.2ms                  │
-│  DB: 3 nguoi                        │
-│  Threshold: 0.4                     │
-│  Model: buffalo_sc                  │
-└─────────────────────────────────────┘
-```
-
-- 🟢 **Xanh lá** = Nhận diện thành công
-- 🔴 **Đỏ** = Không nhận ra (Unknown)
-- Số trong ngoặc = điểm Cosine Similarity (0.0 – 1.0)
-
----
-
-## ⚙️ Tinh chỉnh cấu hình
-
-Mở file `face_recognition_pipeline.py`, chỉnh các biến ở **SECTION 1**:
-
-```python
-# Chọn model: "buffalo_sc" (nhanh) hoặc "buffalo_l" (chính xác hơn)
-MODEL_NAME = "buffalo_sc"
-
-# Số CPU threads cho ONNX Runtime (nên = số nhân logic của CPU)
-INTRA_OP_NUM_THREADS = 8
-
-# Ngưỡng nhận diện: tăng → chặt hơn, giảm → lỏng hơn
-COSINE_THRESHOLD = 0.4
-
-# Index webcam: 0 = mặc định, 1 = webcam thứ 2, ...
-CAMERA_INDEX = 0
-```
-
-### Chọn threshold phù hợp
-
-| Threshold | Hành vi |
-|---|---|
-| `0.35` | Rất chặt — ít nhận nhầm, dễ bỏ sót |
-| `0.40` | **Khuyến nghị** cho `buffalo_sc` |
-| `0.45` | Lỏng hơn — nhận dễ hơn, có thể nhầm |
-| `0.50` | **Khuyến nghị** cho `buffalo_l` |
-
-### So sánh model
-
-| Model | Tốc độ | Độ chính xác | Kích thước |
+| Model | Tốc độ | Độ chính xác | Kích thước model |
 |---|---|---|---|
 | `buffalo_sc` | ⚡⚡⚡ Rất nhanh | ⭐⭐⭐ Tốt | ~100 MB |
 | `buffalo_l`  | ⚡⚡ Nhanh | ⭐⭐⭐⭐ Rất tốt | ~300 MB |
 
 ---
 
-## 🔧 Xử lý sự cố
+## Xử lý sự cố thường gặp
 
-### ❌ `No module named 'insightface'`
+### Lỗi `No module named 'flask'` hoặc `No module named 'insightface'`
+Đảm bảo bạn đã kích hoạt môi trường Conda và cài đặt đủ requirements:
 ```bash
-pip install insightface
+conda activate smartcam
+pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
-### ❌ `Could not open camera index 0`
-- Kiểm tra webcam có đang được dùng bởi ứng dụng khác không (Zoom, Teams, …)
-- Thử đổi `CAMERA_INDEX = 1` hoặc `2`
+### `Could not open camera index 0`
+- Kiểm tra webcam có bị ứng dụng khác (Zoom, Teams, Skype...) chiếm dụng hay không.
+- Thử đổi `camera_index` thành `1` hoặc `2` trong phần Cài đặt trên Web UI.
 
-### ❌ Model tải về chậm / lỗi mạng
-InsightFace tải model về `~/.insightface/models/`. Nếu mạng chậm, thử:
-```bash
-# Đặt timeout lớn hơn (Linux/macOS)
-export INSIGHTFACE_DOWNLOAD_TIMEOUT=300
-python face_recognition_pipeline.py
-```
-
-### ❌ Nhận diện sai hoặc luôn ra "Unknown"
-1. Kiểm tra ảnh trong database có rõ nét, đủ sáng không
-2. Tăng số ảnh mỗi người lên 3–5 ảnh
-3. Điều chỉnh `COSINE_THRESHOLD` xuống thấp hơn (ví dụ `0.35`)
-4. Thử dùng `buffalo_l` thay vì `buffalo_sc`
-
-### ❌ FPS thấp (dưới 10 FPS)
-1. Tăng `INTRA_OP_NUM_THREADS` bằng số nhân CPU thực tế
-2. Chuyển sang model `buffalo_sc` nếu đang dùng `buffalo_l`
-3. Giảm `DET_SIZE` từ `(640, 640)` xuống `(320, 320)`
+### Tốc độ nhận diện chậm / FPS thấp
+1. Mở phần Cài đặt trên Web UI, chỉnh số **CPU Threads** bằng với số nhân thực tế của CPU.
+2. Sử dụng model nhẹ `buffalo_sc`.
+3. Giảm kích thước phát hiện `det_size` xuống `320` hoặc `480`.
 
 ---
 
-## 📦 Nâng cấp lên GPU (tuỳ chọn)
+## Nâng cấp tăng tốc với GPU (Tùy chọn)
 
-Nếu có GPU NVIDIA, dùng Conda để cài CUDA toolkit dễ dàng hơn:
+Nếu hệ thống có GPU NVIDIA:
 
 ```bash
-# Kích hoạt môi trường
 conda activate smartcam
 
-# Cài CUDA toolkit + cuDNN qua conda (không cần cài CUDA thủ công)
+# Cài CUDA toolkit & cuDNN tự động qua Conda
 conda install -c conda-forge cudatoolkit=11.8 cudnn -y
 
-# Gỡ onnxruntime CPU, cài bản GPU
+# Chuyển đổi onnxruntime từ CPU sang GPU
 pip uninstall onnxruntime -y
 pip install onnxruntime-gpu
 ```
 
-Sau đó sửa trong `face_recognition_pipeline.py`:
-```python
-# Dòng providers= trong init_model()
-providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-```
-
-> ✅ Ưu điểm của Conda: tự động cài đúng phiên bản CUDA/cuDNN tương thích — không cần cài thủ công từ NVIDIA website.
+Sau đó trong phần Cài đặt trên Web UI, bật tùy chọn **CUDA Acceleration**.
 
 ---
 
-## 📄 Giấy phép
+## Giấy phép & Thư viện sử dụng
 
-Dự án sử dụng:
 - [InsightFace](https://github.com/deepinsight/insightface) — MIT License
+- [Flask](https://flask.palletsprojects.com/) — BSD License
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime) — MIT License
 - [OpenCV](https://opencv.org/) — Apache 2.0 License
