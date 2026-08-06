@@ -469,6 +469,70 @@ def api_get_photo(user_id, photo_name):
     return send_from_directory(str(photo_dir), photo_name)
 
 
+@app.route("/api/users/<user_id>/photos", methods=["POST"])
+def api_add_user_photos(user_id):
+    """Thêm ảnh mới cho người dùng đã đăng ký."""
+    person_dir = DATABASE_DIR / user_id
+    if not person_dir.exists() or not person_dir.is_dir():
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+
+    photos = request.files.getlist("photos")
+    if not photos or all(f.filename == "" for f in photos):
+        return jsonify({"error": "Không có ảnh được gửi lên"}), 400
+
+    saved_count = 0
+    ts = int(time.time() * 1000)
+    for i, photo in enumerate(photos):
+        if photo.filename == "":
+            continue
+        ext = Path(photo.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            continue
+        save_path = person_dir / f"photo_{ts}_{i + 1}{ext}"
+        photo.save(str(save_path))
+        saved_count += 1
+
+    if saved_count == 0:
+        return jsonify({"error": "Không có ảnh hợp lệ"}), 400
+
+    _reload_database_async()
+
+    current_photos = [
+        f.name
+        for f in person_dir.iterdir()
+        if f.suffix.lower() in SUPPORTED_EXTENSIONS
+    ]
+
+    log.info(f"Đã thêm {saved_count} ảnh cho người dùng {user_id}")
+    return jsonify({"success": True, "added": saved_count, "photos": current_photos})
+
+
+@app.route("/api/users/<user_id>/photos/<photo_name>", methods=["DELETE"])
+def api_delete_user_photo(user_id, photo_name):
+    """Xoá 1 ảnh của người dùng."""
+    person_dir = DATABASE_DIR / user_id
+    if not person_dir.exists() or not person_dir.is_dir():
+        return jsonify({"error": "Người dùng không tồn tại"}), 404
+
+    photo_path = person_dir / photo_name
+    if not photo_path.exists() or not photo_path.is_file():
+        return jsonify({"error": "Ảnh không tồn tại"}), 404
+
+    photo_path.unlink()
+    log.info(f"Đã xoá ảnh {photo_name} của người dùng {user_id}")
+
+    _reload_database_async()
+
+    current_photos = [
+        f.name
+        for f in person_dir.iterdir()
+        if f.suffix.lower() in SUPPORTED_EXTENSIONS
+    ]
+
+    return jsonify({"success": True, "photos": current_photos})
+
+
+
 # --- Settings ---
 @app.route("/api/settings", methods=["GET"])
 def api_get_settings():

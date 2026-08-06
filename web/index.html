@@ -143,6 +143,13 @@
                                         <span>Sinh viên</span>
                                     </div>
                                 </label>
+                                <label class="radio-card">
+                                    <input type="radio" name="role" value="other">
+                                    <div class="radio-card-body">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        <span>Khác</span>
+                                    </div>
+                                </label>
                             </div>
                         </div>
                         <div class="form-group">
@@ -215,6 +222,7 @@
                         <option value="all">Tất cả chức vụ</option>
                         <option value="lecturer">Giảng viên</option>
                         <option value="student">Sinh viên</option>
+                        <option value="other">Khác</option>
                     </select>
                     <select id="filter-gender" class="form-select">
                         <option value="all">Tất cả giới tính</option>
@@ -363,7 +371,7 @@
 
     <!-- ===== EDIT MODAL ===== -->
     <div class="modal-overlay" id="edit-modal" style="display:none;">
-        <div class="modal">
+        <div class="modal modal--lg">
             <div class="modal-header">
                 <h2>Chỉnh Sửa Thông Tin</h2>
                 <button class="modal-close" id="modal-close">&times;</button>
@@ -380,6 +388,7 @@
                         <select id="edit-role" class="form-select">
                             <option value="lecturer">Giảng viên</option>
                             <option value="student">Sinh viên</option>
+                            <option value="other">Khác</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -390,6 +399,25 @@
                         </select>
                     </div>
                 </div>
+
+                <!-- Photos Management -->
+                <div class="form-group">
+                    <label class="form-label">Ảnh Đã Đăng Ký</label>
+                    <div class="edit-photo-container">
+                        <div class="edit-photo-grid" id="edit-photos-list">
+                            <!-- Dynamic photo cards -->
+                        </div>
+                        <div class="edit-photo-upload-zone">
+                            <input type="file" id="edit-photo-input" accept="image/*" multiple hidden>
+                            <button type="button" class="btn btn--secondary btn--sm" id="btn-trigger-add-photo">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Thêm Ảnh Mới
+                            </button>
+                            <span class="upload-hint">Hỗ trợ JPG, PNG, BMP</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="modal-actions">
                     <button class="btn btn--primary" type="submit">Lưu Thay Đổi</button>
                     <button class="btn btn--ghost" type="button" id="modal-cancel">Huỷ</button>
@@ -397,6 +425,7 @@
             </form>
         </div>
     </div>
+
 
     <!-- ===== TOAST ===== -->
     <div class="toast-container" id="toast-container"></div>

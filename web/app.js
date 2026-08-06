@@ -249,7 +249,7 @@ function initRegistration() {
 
     $$('input[name="role"]').forEach((radio) => {
         radio.addEventListener('change', (e) => {
-            const labels = { lecturer: 'Giảng viên', student: 'Sinh viên' };
+            const labels = { lecturer: 'Giảng viên', student: 'Sinh viên', other: 'Khác' };
             previewBadge.textContent = labels[e.target.value] || 'Chức vụ';
         });
     });
@@ -423,7 +423,7 @@ function renderUserList() {
         return;
     }
 
-    const roleLabels = { lecturer: 'Giảng viên', student: 'Sinh viên' };
+    const roleLabels = { lecturer: 'Giảng viên', student: 'Sinh viên', other: 'Khác' };
     const genderLabels = { male: 'Nam', female: 'Nữ' };
 
     grid.innerHTML = filtered.map((u) => {
@@ -492,9 +492,51 @@ function openEditModal(id) {
 
     $('#edit-id').value = id;
     $('#edit-name').value = user.name;
-    $('#edit-role').value = user.role;
+    $('#edit-role').value = user.role || 'other';
     $('#edit-gender').value = user.gender;
+
+    renderEditPhotosList(user);
     $('#edit-modal').style.display = 'grid';
+}
+
+function renderEditPhotosList(user) {
+    const container = $('#edit-photos-list');
+    if (!container) return;
+
+    if (!user.photos || user.photos.length === 0) {
+        container.innerHTML = `<span class="edit-photo-grid-empty">Chưa có ảnh nào được đăng ký</span>`;
+        return;
+    }
+
+    container.innerHTML = user.photos.map((photo) => {
+        const photoUrl = `${API_BASE}/users/${user.id}/photo/${photo}`;
+        return `
+            <div class="edit-photo-item" data-photo="${escapeHtml(photo)}">
+                <img src="${photoUrl}" alt="User Photo">
+                <button type="button" class="edit-photo-del" title="Xoá ảnh" onclick="deleteUserPhoto('${user.id}', '${escapeHtml(photo)}')">&times;</button>
+            </div>
+        `;
+    }).join('');
+}
+
+async function deleteUserPhoto(userId, photoName) {
+    if (!confirm('Bạn có chắc muốn xoá ảnh này khỏi hệ thống?')) return;
+
+    try {
+        const res = await api(`/users/${userId}/photos/${photoName}`, { method: 'DELETE' });
+        showToast('Đã xoá ảnh thành công', 'success');
+
+        // Cập nhật lại user trong state và UI
+        const user = state.registeredUsers.find((u) => u.id === userId);
+        if (user) {
+            user.photos = res.photos;
+            user.photo_count = res.photos.length;
+            renderEditPhotosList(user);
+        }
+        fetchUsers();
+    } catch (err) {
+        showToast('Lỗi xoá ảnh: ' + err.message, 'error');
+    }
 }
 
 function initModal() {
@@ -506,6 +548,47 @@ function initModal() {
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.style.display = 'none';
     });
+
+    const triggerBtn = $('#btn-trigger-add-photo');
+    const photoInput = $('#edit-photo-input');
+
+    if (triggerBtn && photoInput) {
+        triggerBtn.addEventListener('click', () => photoInput.click());
+        photoInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+
+            const userId = $('#edit-id').value;
+            if (!userId) return;
+
+            const formData = new FormData();
+            files.forEach((f) => formData.append('photos', f));
+
+            try {
+                showToast('Đang tải ảnh mới lên...', 'info');
+                const res = await fetch(`${API_BASE}/users/${userId}/photos`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+                showToast(`Đã thêm ${data.added} ảnh mới`, 'success');
+                photoInput.value = '';
+
+                // Cập nhật state & UI
+                const user = state.registeredUsers.find((u) => u.id === userId);
+                if (user) {
+                    user.photos = data.photos;
+                    user.photo_count = data.photos.length;
+                    renderEditPhotosList(user);
+                }
+                fetchUsers();
+            } catch (err) {
+                showToast('Lỗi tải ảnh: ' + err.message, 'error');
+            }
+        });
+    }
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -530,6 +613,7 @@ function initModal() {
         }
     });
 }
+
 
 // ── List Filters ───────────────────────────────────────────────
 function initListFilters() {
