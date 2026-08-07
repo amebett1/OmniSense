@@ -26,6 +26,7 @@ import uuid
 import shutil
 import logging
 import threading
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -33,6 +34,10 @@ import cv2
 import numpy as np
 from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+# Tải cấu hình biến môi trường từ .env
+load_dotenv()
 
 # Thêm thư mục gốc dự án vào sys.path để import pipeline
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -55,6 +60,14 @@ DATABASE_DIR = PROJECT_ROOT / "face_recognition" / "database"
 METADATA_FILE = PROJECT_ROOT / "face_recognition" / "metadata.json"
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
 WEB_DIR = PROJECT_ROOT / "web"
+STATIC_DIR = PROJECT_ROOT / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+
+# Đường dẫn Piper TTS & Sound output
+PIPER_EXE = PROJECT_ROOT / "piper" / "piper.exe"
+PIPER_MODEL = PROJECT_ROOT / "models" / "vi_VN-25hours-medium.onnx"
+RESPONSE_WAV_PATH = STATIC_DIR / "response.wav"
+
 
 DEFAULT_SETTINGS = {
     "model": "buffalo_sc",
@@ -633,6 +646,130 @@ def api_video_feed():
     return Response(
         generate_mjpeg(), mimetype="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+# ============================================================
+# VOICE ASSISTANT (STT + GROQ LLM + PIPER TTS)
+# ============================================================
+
+def get_current_detected_user() -> str:
+    """
+    Hàm callback lấy tên người dùng hiện tại xuất hiện trước camera
+    từ kết quả nhận diện InsightFace toàn cục (state.recognition_results).
+    """
+    if hasattr(state, "recognition_results") and state.recognition_results:
+        first_face = state.recognition_results[0]
+        label = first_face.get("label", "Unknown")
+        if label != "Unknown":
+            metadata = load_metadata()
+            user_meta = metadata.get(label, {})
+            return user_meta.get("name", label)
+    return "Unknown"
+
+
+def synthesize_piper_tts(text: str, output_path: Path) -> bool:
+    """
+    Dùng subprocess gọi Piper TTS offline tổng hợp câu trả lời tiếng Việt ra file audio .wav.
+    """
+    pip_bin = PIPER_EXE if PIPER_EXE.exists() else "piper"
+    if not PIPER_MODEL.exists():
+        log.warning(f"Chưa có model Piper TTS tại {PIPER_MODEL}. File âm thanh không được tạo.")
+        return False
+
+    try:
+        cmd = [
+            str(pip_bin),
+            "--model", str(PIPER_MODEL),
+            "--output_file", str(output_path)
+        ]
+        process = subprocess.run(
+            cmd,
+            input=text,
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=True
+        )
+        log.info(f"✅ Đã tạo file âm thanh TTS: {output_path}")
+        return True
+    except Exception as e:
+        log.error(f"❌ Lỗi khi chạy Piper TTS: {e}")
+        return False
+
+
+@app.route("/static/<path:filename>")
+def serve_static_audio(filename):
+    """Serve file tĩnh từ thư mục static (ví dụ: response.wav)."""
+    return send_from_directory(str(STATIC_DIR), filename)
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    """
+    API Trợ lý giọng nói Voice Assistant:
+    1. Nhận JSON { "text": user_transcript }.
+    2. Lấy tên người dùng hiện tại từ get_current_detected_user().
+    3. Tạo System Prompt cá nhân hóa.
+    4. Gọi Groq Cloud LLM (llama-3.3-70b-versatile).
+    5. Gọi Piper TTS tổng hợp file static/response.wav.
+    """
+    data = request.get_json() or {}
+    user_transcript = data.get("text", "").strip()
+
+    if not user_transcript:
+        return jsonify({"error": "Văn bản đầu vào không được để trống"}), 400
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return jsonify({"error": "Chưa cấu hình GROQ_API_KEY trên Server (file .env)"}), 500
+
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=api_key)
+    except Exception as e:
+        return jsonify({"error": f"Lỗi khởi tạo Groq client: {str(e)}"}), 500
+
+    # 1. Lấy tên người dùng hiện tại
+    current_user = get_current_detected_user()
+    log.info(f"🎤 User input: '{user_transcript}' | User detected: '{current_user}'")
+
+    # 2. Xây dựng System Prompt linh hoạt
+    if current_user and current_user != "Unknown":
+        system_prompt = (
+            f"Bạn đang nói chuyện với {current_user}. Hãy xưng hô thân mật và trả lời ngắn gọn 1-2 câu bằng tiếng Việt tự nhiên."
+        )
+    else:
+        system_prompt = (
+            "Bạn đang nói chuyện với một người chưa quen biết. Hãy lịch sự và trả lời ngắn gọn 1-2 câu bằng tiếng Việt."
+        )
+
+    # 3. Gọi Groq Cloud LLM
+    try:
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_transcript}
+            ],
+            temperature=0.6,
+            max_tokens=150
+        )
+        bot_reply = completion.choices[0].message.content.strip()
+        log.info(f"🤖 Groq LLM Reply: '{bot_reply}'")
+
+    except Exception as e:
+        log.error(f"❌ Lỗi Groq API: {e}")
+        return jsonify({"error": f"Lỗi xử lý LLM: {str(e)}"}), 500
+
+    # 4. Piper TTS
+    tts_success = synthesize_piper_tts(bot_reply, RESPONSE_WAV_PATH)
+
+    return jsonify({
+        "reply_text": bot_reply,
+        "audio_url": "/static/response.wav" if tts_success else None,
+        "user_name": current_user
+    })
+
 
 
 # ============================================================

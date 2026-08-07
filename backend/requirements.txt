@@ -10,5 +10,10 @@ flask>=3.0.0
 # CORS support (cho phép web frontend gọi API)
 flask-cors>=4.0.0
 
+# Voice Assistant LLM & Environment
+groq>=0.9.0
+python-dotenv>=1.0.0
+
 # Các thư viện từ pipeline chính (đã có trong requirements.txt gốc)
 # numpy, opencv-python, insightface, onnxruntime, Pillow, tqdm
+

@@ -741,6 +741,228 @@ async function checkModelStatus() {
     }
 }
 
+// ── Voice Assistant ───────────────────────────────────────────
+function initVoiceAssistant() {
+    const micBtn = $('#voice-mic-btn');
+    const statusText = $('#voice-status-text');
+    const userTranscriptElem = $('#voice-user-transcript');
+    const botReplyElem = $('#voice-bot-reply');
+
+    // Elements cho Camera Sidebar Chat Box
+    const camMicBtn = $('#cam-voice-mic-btn');
+    const camStatusBadge = $('#cam-voice-status');
+    const camMessagesContainer = $('#cam-chat-messages');
+    const camChatInput = $('#cam-chat-input');
+    const camChatSendBtn = $('#cam-chat-send-btn');
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'vi-VN';
+        recognition.continuous = true;
+        recognition.interimResults = false;
+    } else {
+        if (statusText) {
+            statusText.textContent = "Trình duyệt không hỗ trợ Web Speech API!";
+            statusText.style.color = "#ef4444";
+        }
+        if (camStatusBadge) {
+            camStatusBadge.textContent = "STT Không hỗ trợ";
+            camStatusBadge.style.color = "#ef4444";
+        }
+        if (micBtn) micBtn.disabled = true;
+        if (camMicBtn) camMicBtn.disabled = true;
+    }
+
+    let isListening = false;
+    let isSpeaking = false;
+
+    // Helper cập nhật Trạng thái giao diện
+    function updateStatusUI(text, stateType = 'idle') {
+        if (statusText) {
+            statusText.textContent = text;
+            const colors = { listening: '#ef4444', thinking: '#f59e0b', speaking: '#10b981', idle: '#38bdf8' };
+            statusText.style.color = colors[stateType] || '#38bdf8';
+        }
+        if (camStatusBadge) {
+            camStatusBadge.textContent = text;
+            camStatusBadge.className = 'chat-status-badge';
+            if (stateType === 'listening') camStatusBadge.classList.add('listening');
+            else if (stateType === 'speaking') camStatusBadge.classList.add('speaking');
+        }
+    }
+
+    function updateMicButtons(listening) {
+        if (micBtn) {
+            micBtn.style.background = listening ? '#ef4444' : '#334155';
+            micBtn.style.borderColor = listening ? '#fca5a5' : 'var(--accent-color, #38bdf8)';
+            if (listening) micBtn.classList.add('listening');
+            else micBtn.classList.remove('listening');
+        }
+        if (camMicBtn) {
+            camMicBtn.style.background = listening ? '#ef4444' : 'var(--bg-glass)';
+            camMicBtn.style.borderColor = listening ? '#fca5a5' : 'var(--border)';
+            if (listening) camMicBtn.classList.add('listening');
+            else camMicBtn.classList.remove('listening');
+        }
+    }
+
+    function startListening() {
+        if (!recognition || isSpeaking) return;
+        try {
+            recognition.start();
+            isListening = true;
+            updateMicButtons(true);
+            updateStatusUI('Đang lắng nghe...', 'listening');
+        } catch (e) {
+            console.warn('SpeechRecognition start error:', e);
+        }
+    }
+
+    function stopListening() {
+        if (!recognition) return;
+        try {
+            recognition.stop();
+            isListening = false;
+            updateMicButtons(false);
+            updateStatusUI('Sẵn sàng', 'idle');
+        } catch (e) {
+            console.warn('SpeechRecognition stop error:', e);
+        }
+    }
+
+    function toggleListening() {
+        if (isSpeaking) return;
+        if (isListening) stopListening();
+        else startListening();
+    }
+
+    if (micBtn) micBtn.addEventListener('click', toggleListening);
+    if (camMicBtn) camMicBtn.addEventListener('click', toggleListening);
+
+    // Xử lý Thêm bong bóng Chat vào Chat Box ở Camera Sidebar
+    function appendChatBubble(sender, text) {
+        if (!camMessagesContainer) return;
+
+        // Xoá welcome message nếu còn
+        const welcomeMsg = camMessagesContainer.querySelector('.chat-welcome-msg');
+        if (welcomeMsg) welcomeMsg.remove();
+
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble chat-bubble--${sender}`;
+        
+        const senderLabel = sender === 'user' ? 'Bạn' : 'Trợ lý AI';
+        bubble.innerHTML = `
+            <div class="chat-bubble-sender">${senderLabel}</div>
+            <div class="chat-bubble-text">${escapeHtml(text)}</div>
+        `;
+
+        camMessagesContainer.appendChild(bubble);
+        camMessagesContainer.scrollTop = camMessagesContainer.scrollHeight;
+    }
+
+    // Gửi chat text khi nhập từ input box
+    async function handleSendText() {
+        if (!camChatInput) return;
+        const text = camChatInput.value.trim();
+        if (!text) return;
+
+        camChatInput.value = '';
+        await processUserUtterance(text);
+    }
+
+    if (camChatSendBtn) camChatSendBtn.addEventListener('click', handleSendText);
+    if (camChatInput) {
+        camChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleSendText();
+        });
+    }
+
+    // Xử lý khi nhận giọng nói từ Web Speech API
+    if (recognition) {
+        recognition.onresult = async (event) => {
+            const lastIndex = event.results.length - 1;
+            const transcript = event.results[lastIndex][0].transcript.trim();
+
+            if (!transcript) return;
+            console.log('🎤 User Speech Transcript:', transcript);
+            await processUserUtterance(transcript);
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech Recognition error:', event.error);
+            if (event.error === 'not-allowed') {
+                updateStatusUI('Vui lòng cho phép truy cập Microphone!', 'idle');
+            }
+        };
+    }
+
+    // Luồng xử lý chung cho câu nói / văn bản người dùng
+    async function processUserUtterance(text) {
+        // Cập nhật giao diện
+        if (userTranscriptElem) userTranscriptElem.textContent = text;
+        appendChatBubble('user', text);
+        updateStatusUI('Đang suy nghĩ...', 'thinking');
+
+        try {
+            const data = await api('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+
+            const replyText = data.reply_text || '...';
+            if (botReplyElem) botReplyElem.textContent = replyText;
+            appendChatBubble('bot', replyText);
+
+            if (data.audio_url) {
+                playResponseAudio(data.audio_url);
+            } else {
+                updateStatusUI('Hoàn tất', 'idle');
+            }
+        } catch (err) {
+            console.error('❌ Chat API Error:', err);
+            if (botReplyElem) botReplyElem.textContent = 'Lỗi kết nối Trợ lý AI!';
+            appendChatBubble('bot', 'Có lỗi kết nối tới Server Trợ lý AI.');
+            updateStatusUI('Lỗi xử lý!', 'idle');
+            showToast('Lỗi Trợ lý AI: ' + err.message, 'error');
+        }
+    }
+
+    function playResponseAudio(audioUrl) {
+        // Tắt micro trước khi phát loa để TRÁNH ECHO
+        isSpeaking = true;
+        stopListening();
+
+        updateStatusUI('Đang trả lời...', 'speaking');
+
+        // Cache-busting URL
+        const cacheBustUrl = `${window.location.origin}${audioUrl}?t=${Date.now()}`;
+        const audio = new Audio(cacheBustUrl);
+
+        audio.onended = () => {
+            console.log('🔊 Phát audio xong, bật lại Micro.');
+            isSpeaking = false;
+            startListening();
+        };
+
+        audio.onerror = (err) => {
+            console.error('❌ Lỗi phát audio:', err);
+            isSpeaking = false;
+            startListening();
+        };
+
+        audio.play().catch((err) => {
+            console.warn('⚠️ Autoplay bị chặn:', err);
+            isSpeaking = false;
+            updateStatusUI('Bấm 🎙️ để tiếp tục', 'idle');
+        });
+    }
+}
+
+
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
@@ -749,8 +971,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initModal();
     initListFilters();
     initSettings();
+    initVoiceAssistant();
     fetchUsers();
 
     // Kiểm tra trạng thái model khi load trang
     setTimeout(checkModelStatus, 1500);
 });
+
