@@ -22,3 +22,8 @@ onnxruntime>=1.16.0
 
 # InsightFace (face detection + recognition)
 insightface
+
+# Web Server Backend (Flask API)
+flask>=3.0.0
+flask-cors>=4.0.0
+

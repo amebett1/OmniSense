@@ -64,14 +64,15 @@ Di chuyển vào thư mục dự án và cài đặt các thư viện cần thi�
 
 ```bash
 # Di chuyển vào thư mục dự án OmniSense
-cd d:\Coding\OmniSense
+cd d:\Project\OmniSense
 
-# Cài đặt thư viện core pipeline (InsightFace, OpenCV, ONNX Runtime...)
+# Cài đặt thư viện chính (bao gồm InsightFace, OpenCV, ONNX Runtime, Flask, Flask-CORS...)
 pip install -r requirements.txt
 
-# Cài đặt thư viện backend (Flask, Flask-CORS)
+# Cài đặt / cập nhật các thư viện Backend Flask (nếu cài riêng)
 pip install -r backend/requirements.txt
 ```
+
 
 > ⏳ **Lưu ý:** Lần đầu khởi chạy, ứng dụng sẽ tự động tải model InsightFace (`buffalo_sc` ~100 MB).
 
