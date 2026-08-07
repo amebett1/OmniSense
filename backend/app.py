@@ -652,19 +652,23 @@ def api_video_feed():
 # VOICE ASSISTANT (STT + GROQ LLM + PIPER TTS)
 # ============================================================
 
-def get_current_detected_user() -> str:
+def get_current_detected_user() -> tuple[str, str, str]:
     """
-    Hàm callback lấy tên người dùng hiện tại xuất hiện trước camera
+    Hàm callback lấy thông tin người dùng hiện tại (name, role, gender) xuất hiện trước camera
     từ kết quả nhận diện InsightFace toàn cục (state.recognition_results).
     """
+
     if hasattr(state, "recognition_results") and state.recognition_results:
         first_face = state.recognition_results[0]
         label = first_face.get("label", "Unknown")
         if label != "Unknown":
             metadata = load_metadata()
             user_meta = metadata.get(label, {})
-            return user_meta.get("name", label)
-    return "Unknown"
+            name = user_meta.get("name", label)
+            role = user_meta.get("role", "khác")
+            gender = user_meta.get("gender", "male")
+            return name, role, gender
+    return "Unknown", "khác", "male"
 
 
 def synthesize_piper_tts(text: str, output_path: Path) -> bool:
@@ -708,8 +712,8 @@ def api_chat():
     """
     API Trợ lý giọng nói Voice Assistant:
     1. Nhận JSON { "text": user_transcript }.
-    2. Lấy tên người dùng hiện tại từ get_current_detected_user().
-    3. Tạo System Prompt cá nhân hóa.
+    2. Lấy (name, role, gender) người dùng hiện tại từ get_current_detected_user().
+    3. Tạo System Prompt cá nhân hóa chính xác danh xưng (Thầy/Cô nếu là Giảng viên).
     4. Gọi Groq Cloud LLM (llama-3.3-70b-versatile).
     5. Gọi Piper TTS tổng hợp file static/response.wav.
     """
@@ -729,18 +733,43 @@ def api_chat():
     except Exception as e:
         return jsonify({"error": f"Lỗi khởi tạo Groq client: {str(e)}"}), 500
 
-    # 1. Lấy tên người dùng hiện tại
-    current_user = get_current_detected_user()
-    log.info(f"🎤 User input: '{user_transcript}' | User detected: '{current_user}'")
+    # 1. Lấy tên, vai trò và giới tính người dùng hiện tại từ camera
+    current_name, current_role, current_gender = get_current_detected_user()
+    role_norm = str(current_role).lower().strip()
+    gender_norm = str(current_gender).lower().strip()
+    is_female = gender_norm in ["female", "nữ", "nu", "f"]
+    title = "Cô" if is_female else "Thầy"
 
-    # 2. Xây dựng System Prompt linh hoạt
-    if current_user and current_user != "Unknown":
-        system_prompt = (
-            f"Bạn đang nói chuyện với {current_user}. Hãy xưng hô thân mật và trả lời ngắn gọn 1-2 câu bằng tiếng Việt tự nhiên."
-        )
+    log.info(f"🎤 User input: '{user_transcript}' | Detected: '{current_name}' (Role: {current_role}, Gender: {current_gender})")
+
+    # 2. Xây dựng System Prompt linh hoạt theo vai trò & giới tính chuẩn xác
+    if current_name and current_name != "Unknown":
+        if role_norm in ["giảng_viên", "lecturer", "giang_vien"]:
+            system_prompt = (
+                f"Bạn là trợ lý AI lễ phép và trang trọng tại phòng nghiên cứu. "
+                f"Bạn đang nói chuyện với Giảng viên {current_name} (Giới tính: {'Nữ' if is_female else 'Nam'}). "
+                f"BẮT BUỘC xưng hô là 'Em' và BẮT BUỘC gọi đối phương là '{title} {current_name}'. "
+                f"TUYỆT ĐỐI KHÔNG dùng từ 'bạn', KHÔNG nhầm sang '{'Thầy' if is_female else 'Cô'}'. "
+                "Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+            )
+        elif role_norm in ["sinh_viên", "student", "sinh_vien"]:
+            system_prompt = (
+                f"Bạn là trợ lý AI thân thiện, cởi mở như bạn bè. "
+                f"Bạn đang nói chuyện với bạn sinh viên {current_name}. "
+                f"Hãy xưng hô là 'Mình' hoặc 'Tôi' và gọi tên '{current_name}' hoặc 'bạn'. "
+                "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy', KHÔNG dùng từ 'Cô', KHÔNG xưng 'Em' với sinh viên. "
+                "Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+            )
+        else:
+            system_prompt = (
+                f"Bạn là trợ lý AI lịch sự và hiếu khách. Bạn đang nói chuyện với {current_name}. "
+                "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy' hay 'Cô'. "
+                "Hãy trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+            )
     else:
         system_prompt = (
-            "Bạn đang nói chuyện với một người chưa quen biết. Hãy lịch sự và trả lời ngắn gọn 1-2 câu bằng tiếng Việt."
+            "Bạn là trợ lý AI lịch sự và hiếu khách. "
+            "Bạn đang nói chuyện với một người chưa quen biết. Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt."
         )
 
     # 3. Gọi Groq Cloud LLM
@@ -754,7 +783,8 @@ def api_chat():
             temperature=0.6,
             max_tokens=150
         )
-        bot_reply = completion.choices[0].message.content.strip()
+        raw_reply = completion.choices[0].message.content.strip()
+        bot_reply = clean_text_for_tts(raw_reply)
         log.info(f"🤖 Groq LLM Reply: '{bot_reply}'")
 
     except Exception as e:
@@ -767,8 +797,205 @@ def api_chat():
     return jsonify({
         "reply_text": bot_reply,
         "audio_url": "/static/response.wav" if tts_success else None,
-        "user_name": current_user
+        "user_name": current_name,
+        "user_role": current_role,
+        "user_gender": current_gender
     })
+
+
+# ============================================================
+# DYNAMIC GREETING SYSTEM (DYNAMIC SYSTEM PROMPT & ROLE-BASED)
+# ============================================================
+
+import re
+
+GREETING_WAV_PATH = STATIC_DIR / "greeting.wav"
+
+
+def clean_text_for_tts(text: str) -> str:
+    """
+    Chuẩn hóa văn bản cho Piper TTS:
+    - Loại bỏ emoji, ghi chú trong ngoặc [hành động] hoặc (hành động).
+    - Bỏ định dạng Markdown (*, **, #, `).
+    - Làm sạch khoảng trắng dư thừa.
+    """
+    # Xóa ghi chú hành động dạng [cười], (cười)
+    text = re.sub(r"\[.*?\]", "", text)
+    text = re.sub(r"\(.*?\)", "", text)
+
+    # Xóa ký tự Markdown
+    text = re.sub(r"[\*\#\`\_\~]", "", text)
+
+    # Xóa Emoji
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE,
+    )
+    text = emoji_pattern.sub("", text)
+
+    # Chuẩn hóa khoảng trắng
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
+    """
+    Tạo câu chào tự động (Dynamic Greeting System) dựa trên tên, vai trò (role) và giới tính (gender).
+    Role hỗ trợ: 'giảng_viên' / 'lecturer', 'sinh_viên' / 'student', 'khác' / 'other'.
+    Gender hỗ trợ: 'male' / 'nam', 'female' / 'nữ'.
+    """
+    api_key = os.getenv("GROQ_API_KEY")
+    role_norm = str(role).lower().strip()
+    gender_norm = str(gender).lower().strip()
+    is_female = gender_norm in ["female", "nữ", "nu", "f"]
+
+    # Phân loại vai trò rõ ràng
+    is_lecturer = role_norm in ["giảng_viên", "lecturer", "giang_vien"]
+    is_student = role_norm in ["sinh_viên", "student", "sinh_vien"]
+
+    title = ("Cô" if is_female else "Thầy") if is_lecturer else ""
+
+    if not api_key:
+        log.warning("Chưa cấu hình GROQ_API_KEY trong .env! Trả về câu chào mặc định.")
+        if is_lecturer:
+            return f"Em chào {title} {name} ạ!"
+        elif is_student:
+            return f"Chào bạn {name} nhé! Chúc bạn một ngày tốt lành."
+        else:
+            return "Xin chào bạn, chào mừng bạn đến với phòng lab!"
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=api_key)
+    except Exception as e:
+        log.error(f"Lỗi khởi tạo Groq client: {e}")
+        if is_lecturer:
+            return f"Em chào {title} {name} ạ!"
+        elif is_student:
+            return f"Chào bạn {name} nhé!"
+        else:
+            return f"Xin chào {name}!"
+
+    # Xây dựng System Prompt linh hoạt và NGHIÊM NGẶT theo từng vai trò
+    if is_lecturer:
+        system_prompt = (
+            f"Bạn là trợ lý AI lễ phép và trang trọng tại phòng nghiên cứu. "
+            f"Bạn đang gửi câu chào tới Giảng viên {name} (Giới tính: {'Nữ' if is_female else 'Nam'}). "
+            f"BẮT BUỘC xưng hô là 'Em' và BẮT BUỘC gọi đối phương chính xác là '{title} {name}'. "
+            f"TUYỆT ĐỐI KHÔNG gọi bằng tên trống, KHÔNG dùng từ 'bạn', KHÔNG dùng nhầm sang '{'Thầy' if is_female else 'Cô'}'. "
+            "RÀNG BUỘC BẮT BUỘC: Trả lời siêu ngắn gọn từ 1 đến 2 câu, dưới 20 từ. "
+            "KHÔNG dùng emoji, KHÔNG dùng markdown (**), KHÔNG ghi chú hành động như [cười]."
+        )
+        user_prompt = f"Tạo câu chào lễ phép tới Giảng viên {title} {name}."
+    elif is_student:
+        system_prompt = (
+            f"Bạn là trợ lý AI thân thiện, cởi mở như bạn bè tại phòng nghiên cứu. "
+            f"Bạn đang gửi câu chào tới bạn Sinh viên tên là '{name}'. "
+            f"BẮT BUỘC gọi tên trực tiếp là '{name}' hoặc dùng từ 'bạn'. Xưng hô 'Mình' hoặc 'Tôi'. "
+            "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy', KHÔNG dùng từ 'Cô', KHÔNG xưng hô 'Em' đối với sinh viên. "
+            "RÀNG BUỘC BẮT BUỘC: Trả lời siêu ngắn gọn từ 1 đến 2 câu, dưới 20 từ. "
+            "KHÔNG dùng emoji, KHÔNG dùng markdown (**), KHÔNG ghi chú hành động như [cười]."
+        )
+        user_prompt = f"Tạo câu chào thân thiện tới bạn sinh viên {name}."
+    else:  # "khác" / "other" / "Unknown"
+        system_prompt = (
+            f"Bạn là trợ lý AI lịch sự và hiếu khách tại phòng nghiên cứu. "
+            f"Bạn đang gửi câu chào tới vị khách tên là '{name}'. "
+            "Gọi đối phương là 'bạn' hoặc dùng tên trực tiếp. "
+            "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy' hay 'Cô'. "
+            "RÀNG BUỘC BẮT BUỘC: Trả lời siêu ngắn gọn từ 1 đến 2 câu, dưới 20 từ. "
+            "KHÔNG dùng emoji, KHÔNG dùng markdown (**), KHÔNG ghi chú hành động như [cười]."
+        )
+        user_prompt = f"Tạo câu chào lịch sự tới khách {name}."
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.5,
+            max_tokens=60
+        )
+        raw_reply = completion.choices[0].message.content.strip()
+        cleaned_reply = clean_text_for_tts(raw_reply)
+        log.info(f"✨ Dynamic Greeting ({role_norm}, {name}): '{cleaned_reply}'")
+        return cleaned_reply
+    except Exception as e:
+        log.error(f"❌ Lỗi Groq API khi tạo câu chào: {e}")
+        if is_lecturer:
+            return f"Em chào {title} {name} ạ!"
+        elif is_student:
+            return f"Chào bạn {name} nhé!"
+        else:
+            return "Xin chào bạn, chào mừng bạn đến với phòng lab!"
+
+
+
+@app.route("/api/greet", methods=["POST", "GET"])
+def api_greet():
+    """
+    Endpoint sinh câu chào tự động:
+    POST / GET payload/params: { "name": "Phong", "role": "giảng_viên", "gender": "male" }
+    """
+    if request.method == "POST":
+        data = request.get_json() or {}
+        name = data.get("name")
+        role = data.get("role")
+        gender = data.get("gender")
+    else:
+        name = request.args.get("name")
+        role = request.args.get("role")
+        gender = request.args.get("gender")
+
+    # Nếu không truyền name, lấy tự động từ nhận diện camera hiện tại
+    if not name or name == "Unknown":
+        if hasattr(state, "recognition_results") and state.recognition_results:
+            first_face = state.recognition_results[0]
+            label = first_face.get("label", "Unknown")
+            if label != "Unknown":
+                metadata = load_metadata()
+                meta = metadata.get(label, {})
+                name = meta.get("name", label)
+                role = meta.get("role", "khác")
+                gender = meta.get("gender", "male")
+            else:
+                name = "Unknown"
+                role = "khác"
+                gender = "male"
+        else:
+            name = "bạn"
+            role = "khác"
+            gender = "male"
+
+    if not role:
+        role = "khác"
+    if not gender:
+        gender = "male"
+
+    # 1. Sinh câu chào động
+    greeting_text = generate_role_greeting(name, role, gender)
+
+    # 2. Tổng hợp Piper TTS audio
+    tts_success = synthesize_piper_tts(greeting_text, GREETING_WAV_PATH)
+
+    return jsonify({
+        "name": name,
+        "role": role,
+        "gender": gender,
+        "greeting_text": greeting_text,
+        "audio_url": "/static/greeting.wav" if tts_success else None
+    })
+
+
 
 
 

@@ -3,5 +3,11 @@
     "name": "Đồng Minh Đức",
     "role": "student",
     "gender": "male"
+  },
+  "nguyen_canh_hao": {
+    "name": "Nguyễn Cảnh Hào",
+    "role": "student",
+    "gender": "male",
+    "created_at": "2026-08-07T10:51:10.242895"
   }
 }

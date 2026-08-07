@@ -208,6 +208,11 @@ function updateRecognitionLog(faces) {
             continue;
         }
 
+        // Nếu phát hiện người mới -> Tự động gọi LLM sinh câu chào giọng nói
+        if (!existing) {
+            triggerAutoGreeting(face.label);
+        }
+
         const entry = document.createElement('div');
         entry.className = 'log-entry';
         entry.dataset.label = face.label;
@@ -230,6 +235,61 @@ function updateRecognitionLog(faces) {
         }
     }
 }
+
+// ── Auto Greeting Trigger ─────────────────────────────────────
+let lastGreetedUser = null;
+let lastGreetTime = 0;
+
+async function triggerAutoGreeting(label) {
+    const now = Date.now();
+    // Tránh phát câu chào lặp lại cho cùng 1 người trong vòng 30 giây
+    if (lastGreetedUser === label && (now - lastGreetTime) < 30000) return;
+
+    lastGreetedUser = label;
+    lastGreetTime = now;
+
+    try {
+        const user = state.registeredUsers.find(u => u.id === label || u.name === label);
+        const name = user ? user.name : label;
+        const role = user ? user.role : 'khác';
+
+        console.log(`✨ Triggering Auto Greeting for ${name} (${role})...`);
+
+        const data = await api('/greet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, role })
+        });
+
+        if (data.greeting_text) {
+            // Thêm câu chào vào Chat Box ở Sidebar
+            const camMessagesContainer = $('#cam-chat-messages');
+            if (camMessagesContainer) {
+                const welcomeMsg = camMessagesContainer.querySelector('.chat-welcome-msg');
+                if (welcomeMsg) welcomeMsg.remove();
+
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-bubble chat-bubble--bot';
+                bubble.innerHTML = `
+                    <div class="chat-bubble-sender">Trợ lý AI</div>
+                    <div class="chat-bubble-text">${escapeHtml(data.greeting_text)}</div>
+                `;
+                camMessagesContainer.appendChild(bubble);
+                camMessagesContainer.scrollTop = camMessagesContainer.scrollHeight;
+            }
+
+            // Tự động phát âm thanh câu chào
+            if (data.audio_url) {
+                const cacheBustUrl = `${window.location.origin}${data.audio_url}?t=${Date.now()}`;
+                const audio = new Audio(cacheBustUrl);
+                audio.play().catch(e => console.warn('Auto greeting audio playback blocked by browser:', e));
+            }
+        }
+    } catch (e) {
+        console.warn('Auto greeting error:', e);
+    }
+}
+
 
 // ── Registration ───────────────────────────────────────────────
 function initRegistration() {
