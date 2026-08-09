@@ -278,11 +278,9 @@ async function triggerAutoGreeting(label) {
                 camMessagesContainer.scrollTop = camMessagesContainer.scrollHeight;
             }
 
-            // Tự động phát âm thanh câu chào
+            // Tự động phát âm thanh câu chào (dừng âm thanh đang đọc cũ nếu có để tránh đè tiếng)
             if (data.audio_url) {
-                const cacheBustUrl = `${window.location.origin}${data.audio_url}?t=${Date.now()}`;
-                const audio = new Audio(cacheBustUrl);
-                audio.play().catch(e => console.warn('Auto greeting audio playback blocked by browser:', e));
+                playAudio(data.audio_url);
             }
         }
     } catch (e) {
@@ -801,6 +799,74 @@ async function checkModelStatus() {
     }
 }
 
+// ── Global Audio State & Interruption Management ──────────────
+const audioState = {
+    currentAudio: null,
+    isSpeaking: false,
+};
+
+let stopListeningFunc = null;
+let startListeningFunc = null;
+let updateStatusUIFunc = null;
+
+function stopCurrentAudio() {
+    if (audioState.currentAudio) {
+        try {
+            audioState.currentAudio.pause();
+            audioState.currentAudio.currentTime = 0;
+        } catch (e) {
+            console.warn('Lỗi khi ngắt audio:', e);
+        }
+        audioState.currentAudio = null;
+    }
+    audioState.isSpeaking = false;
+    if (updateStatusUIFunc) updateStatusUIFunc('Sẵn sàng', 'idle');
+}
+
+function playAudio(audioUrl, onEnded) {
+    // 1. Dừng ngay lập tức câu đọc hiện tại (nếu đang đọc) để tránh đè tiếng
+    stopCurrentAudio();
+
+    if (!audioUrl) return;
+
+    // 2. Dừng microphone nếu đang lắng nghe để tránh echo
+    if (stopListeningFunc) stopListeningFunc();
+
+    audioState.isSpeaking = true;
+    if (updateStatusUIFunc) updateStatusUIFunc('Đang trả lời...', 'speaking');
+
+    // 3. Khởi tạo và phát Audio với cache busting URL
+    const cacheBustUrl = audioUrl.startsWith('http')
+        ? audioUrl
+        : `${window.location.origin}${audioUrl}${audioUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+
+    const audio = new Audio(cacheBustUrl);
+    audioState.currentAudio = audio;
+
+    audio.onended = () => {
+        audioState.currentAudio = null;
+        audioState.isSpeaking = false;
+        if (updateStatusUIFunc) updateStatusUIFunc('Sẵn sàng', 'idle');
+        if (startListeningFunc) startListeningFunc();
+        if (onEnded) onEnded();
+    };
+
+    audio.onerror = (err) => {
+        console.error('❌ Lỗi khi phát audio TTS:', err);
+        audioState.currentAudio = null;
+        audioState.isSpeaking = false;
+        if (updateStatusUIFunc) updateStatusUIFunc('Sẵn sàng', 'idle');
+        if (startListeningFunc) startListeningFunc();
+    };
+
+    audio.play().catch((err) => {
+        console.warn('⚠️ Audio playback bị từ chối hoặc chặn bởi trình duyệt:', err);
+        audioState.currentAudio = null;
+        audioState.isSpeaking = false;
+        if (updateStatusUIFunc) updateStatusUIFunc('Bấm 🎙️ để tiếp tục', 'idle');
+    });
+}
+
 // ── Voice Assistant ───────────────────────────────────────────
 function initVoiceAssistant() {
     const micBtn = $('#voice-mic-btn');
@@ -837,7 +903,6 @@ function initVoiceAssistant() {
     }
 
     let isListening = false;
-    let isSpeaking = false;
 
     // Helper cập nhật Trạng thái giao diện
     function updateStatusUI(text, stateType = 'idle') {
@@ -853,6 +918,7 @@ function initVoiceAssistant() {
             else if (stateType === 'speaking') camStatusBadge.classList.add('speaking');
         }
     }
+    updateStatusUIFunc = updateStatusUI;
 
     function updateMicButtons(listening) {
         if (micBtn) {
@@ -870,7 +936,7 @@ function initVoiceAssistant() {
     }
 
     function startListening() {
-        if (!recognition || isSpeaking) return;
+        if (!recognition || audioState.isSpeaking) return;
         try {
             recognition.start();
             isListening = true;
@@ -880,6 +946,7 @@ function initVoiceAssistant() {
             console.warn('SpeechRecognition start error:', e);
         }
     }
+    startListeningFunc = startListening;
 
     function stopListening() {
         if (!recognition) return;
@@ -892,9 +959,13 @@ function initVoiceAssistant() {
             console.warn('SpeechRecognition stop error:', e);
         }
     }
+    stopListeningFunc = stopListening;
 
     function toggleListening() {
-        if (isSpeaking) return;
+        if (audioState.isSpeaking) {
+            stopCurrentAudio();
+            return;
+        }
         if (isListening) stopListening();
         else startListening();
     }
@@ -912,7 +983,7 @@ function initVoiceAssistant() {
 
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble chat-bubble--${sender}`;
-        
+
         const senderLabel = sender === 'user' ? 'Bạn' : 'Trợ lý AI';
         bubble.innerHTML = `
             <div class="chat-bubble-sender">${senderLabel}</div>
@@ -961,6 +1032,9 @@ function initVoiceAssistant() {
 
     // Luồng xử lý chung cho câu nói / văn bản người dùng
     async function processUserUtterance(text) {
+        // Dừng âm thanh đang đọc ngay khi người dùng gửi câu mới
+        stopCurrentAudio();
+
         // Cập nhật giao diện
         if (userTranscriptElem) userTranscriptElem.textContent = text;
         appendChatBubble('user', text);
@@ -978,7 +1052,7 @@ function initVoiceAssistant() {
             appendChatBubble('bot', replyText);
 
             if (data.audio_url) {
-                playResponseAudio(data.audio_url);
+                playAudio(data.audio_url);
             } else {
                 updateStatusUI('Hoàn tất', 'idle');
             }
@@ -989,36 +1063,6 @@ function initVoiceAssistant() {
             updateStatusUI('Lỗi xử lý!', 'idle');
             showToast('Lỗi Trợ lý AI: ' + err.message, 'error');
         }
-    }
-
-    function playResponseAudio(audioUrl) {
-        // Tắt micro trước khi phát loa để TRÁNH ECHO
-        isSpeaking = true;
-        stopListening();
-
-        updateStatusUI('Đang trả lời...', 'speaking');
-
-        // Cache-busting URL
-        const cacheBustUrl = `${window.location.origin}${audioUrl}?t=${Date.now()}`;
-        const audio = new Audio(cacheBustUrl);
-
-        audio.onended = () => {
-            console.log('🔊 Phát audio xong, bật lại Micro.');
-            isSpeaking = false;
-            startListening();
-        };
-
-        audio.onerror = (err) => {
-            console.error('❌ Lỗi phát audio:', err);
-            isSpeaking = false;
-            startListening();
-        };
-
-        audio.play().catch((err) => {
-            console.warn('⚠️ Autoplay bị chặn:', err);
-            isSpeaking = false;
-            updateStatusUI('Bấm 🎙️ để tiếp tục', 'idle');
-        });
     }
 }
 

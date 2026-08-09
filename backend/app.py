@@ -674,18 +674,19 @@ def get_current_detected_user() -> tuple[str, str, str]:
 def synthesize_piper_tts(text: str, output_path: Path) -> bool:
     """
     Dùng subprocess gọi Piper TTS offline tổng hợp câu trả lời tiếng Việt ra file audio .wav.
+    Hỗ trợ cả PIPER_EXE trực tiếp hoặc python module (piper-tts).
     """
-    pip_bin = PIPER_EXE if PIPER_EXE.exists() else "piper"
     if not PIPER_MODEL.exists():
         log.warning(f"Chưa có model Piper TTS tại {PIPER_MODEL}. File âm thanh không được tạo.")
         return False
 
+    if PIPER_EXE.exists():
+        cmd = [str(PIPER_EXE), "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
+    else:
+        cmd = [sys.executable, "-m", "piper", "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
+
     try:
-        cmd = [
-            str(pip_bin),
-            "--model", str(PIPER_MODEL),
-            "--output_file", str(output_path)
-        ]
+        output_path.parent.mkdir(exist_ok=True, parents=True)
         process = subprocess.run(
             cmd,
             input=text,
