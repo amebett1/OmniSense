@@ -145,7 +145,7 @@ def init_model() -> FaceAnalysis:
         # session_options được truyền riêng khi build session nội bộ.
         # Ta set global session options qua ort.set_default_logger_severity
         # và sử dụng allowed_modules để kiểm soát các sub-model.
-        allowed_modules=["detection", "recognition"],
+        allowed_modules=["detection", "recognition", "landmark_3d_68"],
     )
 
     # Đặt kích thước ảnh input cho detector
@@ -420,50 +420,137 @@ def identify_face(
         return "Unknown", best_score
 
 
+# ============================================================
+# SECTION 3.5: VISUAL LIP MOVEMENT (MAR - Active Speaker Detection)
+# ============================================================
+
+import threading
+
+
+def calculate_mar(face) -> float:
+    """
+    Tính Mouth Aspect Ratio (MAR) từ facial landmarks.
+    Sử dụng 68-point 3D/2D landmarks (face.landmark_3d_68) với các điểm môi 60..67.
+    """
+    if hasattr(face, "landmark_3d_68") and face.landmark_3d_68 is not None:
+        try:
+            lmk = face.landmark_3d_68[:, :2]  # (68, 2)
+            # Các điểm mốc khoé môi và môi trong:
+            # 60: khoé trái, 64: khoé phải
+            # 61, 62, 63: môi trên trong
+            # 67, 66, 65: môi dưới trong
+            p1_p5 = np.linalg.norm(lmk[60] - lmk[64])
+            if p1_p5 > 1e-5:
+                p2_p8 = np.linalg.norm(lmk[61] - lmk[67])
+                p3_p7 = np.linalg.norm(lmk[62] - lmk[66])
+                p4_p6 = np.linalg.norm(lmk[63] - lmk[65])
+                mar = (p2_p8 + p3_p7 + p4_p6) / (2.0 * p1_p5)
+                return float(mar)
+        except Exception:
+            pass
+
+    if hasattr(face, "landmark_2d_106") and face.landmark_2d_106 is not None:
+        try:
+            lmk = face.landmark_2d_106
+            corner_dist = np.linalg.norm(lmk[52] - lmk[61])
+            if corner_dist > 1e-5:
+                vertical_dist = np.linalg.norm(lmk[56] - lmk[66])
+                return float(vertical_dist / corner_dist)
+        except Exception:
+            pass
+
+    return 0.0
+
+
+class MARTracker:
+    """
+    Quản lý lịch sử MAR của từng khuôn mặt qua các frame (Sliding Window Buffer).
+    Xác định trạng thái đang nói (Active Speaker) dựa trên độ biến thiên std(MAR).
+    """
+
+    def __init__(self, window_size: int = 15, std_threshold: float = 0.02, min_avg_mar: float = 0.015):
+        self.window_size = window_size
+        self.std_threshold = std_threshold
+        self.min_avg_mar = min_avg_mar
+        self.history = {}
+        self.lock = threading.Lock()
+
+    def update(self, face_id: str, mar: float) -> tuple[float, bool]:
+        """Cập nhật MAR và trả về (mar_std, is_speaking)."""
+        with self.lock:
+            if face_id not in self.history:
+                self.history[face_id] = []
+
+            h = self.history[face_id]
+            h.append(mar)
+            if len(h) > self.window_size:
+                h.pop(0)
+
+            if len(h) < 4:
+                return 0.0, False
+
+            mar_std = float(np.std(h))
+            avg_mar = float(np.mean(h))
+
+            # Người đang nói có MAR biến thiên đủ cao VÀ trung bình MAR không quá phẳng
+            is_speaking = (mar_std >= self.std_threshold) and (avg_mar >= self.min_avg_mar)
+            return round(mar_std, 4), is_speaking
+
+    def cleanup_old_users(self, active_ids: set[str]):
+        """Dọn dẹp lịch sử của các khuôn mặt rời khỏi khung hình."""
+        with self.lock:
+            for key in list(self.history.keys()):
+                if key not in active_ids:
+                    del self.history[key]
+
+
+mar_tracker = MARTracker()
+
+
 def process_frame(
     frame: np.ndarray,
     app: FaceAnalysis,
     db: FaceDatabase,
     threshold: float = COSINE_THRESHOLD
-) -> np.ndarray:
+) -> tuple[np.ndarray, list]:
     """
-    Xử lý 1 frame từ camera: detect → embed → nhận diện → vẽ kết quả.
-
-    Quy trình:
-      1. Đưa frame vào InsightFace để detect và embed khuôn mặt.
-         (InsightFace tự resize input theo DET_SIZE đã cấu hình lúc prepare())
-      2. Với mỗi khuôn mặt phát hiện được, gọi identify_face().
-      3. Vẽ bounding box + label lên frame.
-
-    Args:
-        frame:     BGR numpy array từ cv2.VideoCapture.read().
-        app:       FaceAnalysis instance.
-        db:        FaceDatabase đã load vào RAM.
-        threshold: Ngưỡng cosine similarity.
-
+    Xử lý 1 frame từ camera: detect → embed → MAR lip movement → nhận diện → vẽ kết quả.
     Returns:
-        Frame BGR đã được annotate (vẽ bounding box và label).
+        tuple (output_frame, faces)
     """
-    # Sao chép để không sửa frame gốc (tùy chọn, bỏ nếu cần tốc độ)
     output_frame = frame.copy()
 
-    # --- Detect + Embed (InsightFace tự xử lý resize nội bộ) ---
-    # app.get() trả về list[Face], mỗi Face có:
-    #   .bbox      : [x1, y1, x2, y2] tọa độ bounding box
-    #   .embedding : numpy array (512,) - feature vector
-    #   .det_score : độ tin cậy detection [0.0, 1.0]
-    #   .kps       : 5 keypoints khuôn mặt
     faces = app.get(output_frame)
+    active_ids = set()
 
     for face in faces:
-        # Lấy embedding từ face object (đã được InsightFace normalize)
-        embedding = face.embedding  # (512,) float32
-
-        # Nhận diện danh tính
+        embedding = face.embedding
         label, score = identify_face(embedding, db, threshold)
 
+        # Tính MAR và theo dõi biến thiên cử động môi
+        mar = calculate_mar(face)
+
+        # Key định danh cho tracker
+        if label != "Unknown":
+            face_key = label
+        else:
+            x1, y1, x2, y2 = [int(v) for v in face.bbox]
+            face_key = f"unknown_{int((x1+x2)/2)//60}_{int((y1+y2)/2)//60}"
+
+        active_ids.add(face_key)
+        mar_std, is_speaking = mar_tracker.update(face_key, mar)
+
+        # Gán thuộc tính bổ sung trực tiếp vào face object
+        face.label = label
+        face.score = score
+        face.mar = round(mar, 3)
+        face.mar_std = mar_std
+        face.is_speaking = is_speaking
+
         # Vẽ kết quả lên frame
-        _draw_face_annotation(output_frame, face.bbox, label, score)
+        _draw_face_annotation(output_frame, face.bbox, label, score, mar=mar, is_speaking=is_speaking)
+
+    mar_tracker.cleanup_old_users(active_ids)
 
     # Hiển thị số lượng khuôn mặt phát hiện được
     cv2.putText(
@@ -477,47 +564,48 @@ def process_frame(
         cv2.LINE_AA
     )
 
-    return output_frame
+    return output_frame, faces
 
 
 def _draw_face_annotation(
     frame: np.ndarray,
     bbox: np.ndarray,
     label: str,
-    score: float
+    score: float,
+    mar: float = 0.0,
+    is_speaking: bool = False
 ):
     """
-    Hàm nội bộ: Vẽ bounding box và label lên frame.
-
-    Màu sắc:
-      - Xanh lá (0, 220, 50)  → Nhận diện được
-      - Đỏ     (0, 50, 220)   → Unknown
-
-    Args:
-        frame: Frame BGR sẽ được vẽ trực tiếp (in-place).
-        bbox:  [x1, y1, x2, y2] tọa độ pixel.
-        label: Tên người hoặc "Unknown".
-        score: Điểm cosine similarity.
+    Hàm nội bộ: Vẽ bounding box, nhãn và trạng thái người đang nói (Speaking 🗣️).
     """
     x1, y1, x2, y2 = [int(v) for v in bbox]
 
-    # Màu box: xanh lá = nhận diện được, đỏ = unknown
-    color = (0, 220, 50) if label != "Unknown" else (0, 50, 220)
-    thickness = 2
+    # Màu box:
+    # Nếu đang nói (Speaking) -> Vàng chanh/Cyan viền dày (0, 255, 255)
+    # Nhận diện được -> Xanh lá (0, 220, 50)
+    # Unknown -> Đỏ (0, 50, 220)
+    if is_speaking:
+        color = (0, 255, 255)  # Yellow / Cyan highlight
+        thickness = 3
+    elif label != "Unknown":
+        color = (0, 220, 50)
+        thickness = 2
+    else:
+        color = (0, 50, 220)
+        thickness = 2
 
     # Vẽ bounding box
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
 
-    # Text hiển thị: "Tên (0.87)"
-    display_text = f"{label} ({score:.2f})"
+    # Text hiển thị: "Tên (0.87)" hoặc "Tên [SPEAKING]"
+    speaking_tag = " [SPEAKING]" if is_speaking else ""
+    display_text = f"{label} ({score:.2f}){speaking_tag}"
 
-    # Đo kích thước text để tạo nền đen
     font       = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.65
     font_thick = 2
     (text_w, text_h), baseline = cv2.getTextSize(display_text, font, font_scale, font_thick)
 
-    # Nền mờ cho text (dễ đọc hơn)
     label_y = max(y1 - 10, text_h + 10)
     cv2.rectangle(
         frame,
@@ -527,14 +615,16 @@ def _draw_face_annotation(
         cv2.FILLED
     )
 
-    # Vẽ text (màu trắng trên nền màu)
+    # Nếu đang nói, chữ màu đen trên nền vàng nổi bật; ngược lại chữ trắng
+    text_color = (0, 0, 0) if is_speaking else (255, 255, 255)
+
     cv2.putText(
         frame,
         display_text,
         (x1 + 2, label_y),
         font,
         font_scale,
-        (255, 255, 255),
+        text_color,
         font_thick,
         cv2.LINE_AA
     )
@@ -592,7 +682,7 @@ def main_loop(app: FaceAnalysis, db: FaceDatabase):
 
         # --- Xử lý nhận diện ---
         start_t = time.perf_counter()
-        annotated_frame = process_frame(frame, app, db)
+        annotated_frame, faces = process_frame(frame, app, db)
         inference_ms = (time.perf_counter() - start_t) * 1000
 
         # --- Tính và hiển thị FPS ---

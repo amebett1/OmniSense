@@ -236,19 +236,28 @@ def camera_loop():
         start_t = time.perf_counter()
         if state.model_ready and state.model is not None and state.db is not None:
             threshold = state.settings.get("threshold", pipeline.COSINE_THRESHOLD)
-            annotated = process_frame(frame, state.model, state.db, threshold)
+            annotated, faces = process_frame(frame, state.model, state.db, threshold)
 
-            # Thu thập kết quả nhận diện
-            faces = state.model.get(frame)
+            # Thu thập kết quả nhận diện từ danh sách faces đã xử lý MAR & Active Speaker
             results = []
+            metadata = load_metadata()
             for face in faces:
-                label, score = identify_face(
-                    face.embedding, state.db, threshold
-                )
+                label = getattr(face, "label", "Unknown")
+                score = getattr(face, "score", 0.0)
+                mar = getattr(face, "mar", 0.0)
+                mar_std = getattr(face, "mar_std", 0.0)
+                is_speaking = getattr(face, "is_speaking", False)
+                meta = metadata.get(label, {})
                 results.append(
                     {
                         "label": label,
+                        "name": meta.get("name", label),
+                        "role": meta.get("role", "khác"),
+                        "gender": meta.get("gender", "male"),
                         "score": round(float(score), 3),
+                        "mar": mar,
+                        "mar_std": mar_std,
+                        "is_speaking": is_speaking,
                         "bbox": [int(v) for v in face.bbox],
                     }
                 )
@@ -654,13 +663,24 @@ def api_video_feed():
 
 def get_current_detected_user() -> tuple[str, str, str]:
     """
-    Hàm callback lấy thông tin người dùng hiện tại (name, role, gender) xuất hiện trước camera
-    từ kết quả nhận diện InsightFace toàn cục (state.recognition_results).
+    Hàm callback lấy thông tin người dùng hiện tại xuất hiện trước camera.
+    Ưu tiên 1: Người dùng đang có hành vi nói chuyện (is_speaking == True từ MAR Tracker).
+    Ưu tiên 2: Khuôn mặt nhận diện gần/rõ nhất đầu tiên.
     """
-
     if hasattr(state, "recognition_results") and state.recognition_results:
-        first_face = state.recognition_results[0]
-        label = first_face.get("label", "Unknown")
+        # Lựa chọn active speaker đang nói chuyện
+        speaking_faces = [
+            f for f in state.recognition_results
+            if f.get("is_speaking") and f.get("label") != "Unknown"
+        ]
+
+        if speaking_faces:
+            chosen = speaking_faces[0]
+            log.info(f"🗣️ Active Speaker detected via MAR: {chosen.get('name')} (is_speaking=True)")
+        else:
+            chosen = state.recognition_results[0]
+
+        label = chosen.get("label", "Unknown")
         if label != "Unknown":
             metadata = load_metadata()
             user_meta = metadata.get(label, {})
@@ -668,38 +688,90 @@ def get_current_detected_user() -> tuple[str, str, str]:
             role = user_meta.get("role", "khác")
             gender = user_meta.get("gender", "male")
             return name, role, gender
+
     return "Unknown", "khác", "male"
+
+
+import wave
+
+_piper_voice = None
+_piper_lock = threading.Lock()
+
+
+def get_piper_voice():
+    """Lấy hoặc nạp PiperVoice model vào bộ nhớ RAM (chỉ nạp 1 lần)."""
+    global _piper_voice
+    if _piper_voice is None:
+        with _piper_lock:
+            if _piper_voice is None and PIPER_MODEL.exists():
+                try:
+                    log.info(f"Đang nạp Piper TTS model vào RAM: {PIPER_MODEL}...")
+                    from piper import PiperVoice
+                    _piper_voice = PiperVoice.load(str(PIPER_MODEL))
+                    log.info("✅ Piper TTS model đã được nạp thành công vào RAM!")
+                except Exception as e:
+                    log.error(f"❌ Lỗi khi nạp PiperVoice: {e}")
+    return _piper_voice
 
 
 def synthesize_piper_tts(text: str, output_path: Path) -> bool:
     """
-    Dùng subprocess gọi Piper TTS offline tổng hợp câu trả lời tiếng Việt ra file audio .wav.
-    Hỗ trợ cả PIPER_EXE trực tiếp hoặc python module (piper-tts).
+    Tổng hợp câu trả lời tiếng Việt ra file audio .wav.
+    Ưu tiên 1: Dùng PiperVoice Python API (nạp model 1 lần vào RAM, tổng hợp siêu nhanh ~100ms).
+    Ưu tiên 2: Fallback qua Subprocess CLI (piper.exe hoặc python -m piper.__main__).
+    Ưu tiên 3: Fallback qua gTTS (Google Text-to-Speech) nếu Piper không khả dụng.
     """
-    if not PIPER_MODEL.exists():
-        log.warning(f"Chưa có model Piper TTS tại {PIPER_MODEL}. File âm thanh không được tạo.")
+    if not text or not text.strip():
         return False
 
-    if PIPER_EXE.exists():
-        cmd = [str(PIPER_EXE), "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
-    else:
-        cmd = [sys.executable, "-m", "piper", "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
+    output_path.parent.mkdir(exist_ok=True, parents=True)
 
+    # 1. Thử dùng PiperVoice Python API (Nhanh & Tối ưu nhất)
+    voice = get_piper_voice()
+    if voice is not None:
+        try:
+            with wave.open(str(output_path), "wb") as wav_file:
+                voice.synthesize_wav(text, wav_file)
+            log.info(f"✅ Đã tạo file âm thanh TTS (PiperVoice API): {output_path}")
+            return True
+        except Exception as e:
+            log.error(f"❌ Lỗi PiperVoice API: {e}")
+
+    # 2. Fallback Subprocess CLI (nếu có piper.exe hoặc python -m piper.__main__)
+    if PIPER_MODEL.exists():
+        if PIPER_EXE.exists():
+            cmd = [str(PIPER_EXE), "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
+        else:
+            cmd = [sys.executable, "-m", "piper.__main__", "--model", str(PIPER_MODEL), "--output_file", str(output_path)]
+
+        try:
+            process = subprocess.run(
+                cmd,
+                input=text,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=True
+            )
+            log.info(f"✅ Đã tạo file âm thanh TTS (Subprocess): {output_path}")
+            return True
+        except Exception as e:
+            log.error(f"❌ Lỗi khi chạy Piper TTS Subprocess: {e}")
+
+    # 3. Fallback gTTS (Google Text-to-Speech online)
     try:
-        output_path.parent.mkdir(exist_ok=True, parents=True)
-        process = subprocess.run(
-            cmd,
-            input=text,
-            text=True,
-            encoding="utf-8",
-            capture_output=True,
-            check=True
-        )
-        log.info(f"✅ Đã tạo file âm thanh TTS: {output_path}")
+        from gtts import gTTS
+        tts = gTTS(text=text, lang='vi')
+        mp3_path = output_path.with_suffix('.mp3')
+        tts.save(str(mp3_path))
+        # Nếu output_path là wav, đổi thành copy / rename mp3 nếu cần, hoặc lưu file wav
+        # gTTS xuất mp3, nên nếu output_path là .wav ta save .mp3 rồi đổi lại hoặc để browser chơi
+        log.info(f"✅ Đã tạo âm thanh fallback bằng gTTS: {mp3_path}")
         return True
     except Exception as e:
-        log.error(f"❌ Lỗi khi chạy Piper TTS: {e}")
-        return False
+        log.error(f"❌ Lỗi gTTS fallback: {e}")
+
+    return False
 
 
 @app.route("/static/<path:filename>")

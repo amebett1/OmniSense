@@ -112,3 +112,6 @@ face_recognition/database/*
 .jpg
 .png 
 .webp
+
+*.wav
+*.mp3

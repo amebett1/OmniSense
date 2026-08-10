@@ -89,25 +89,7 @@
                     </div>
                 </div>
                 <div class="camera-sidebar">
-                    <div class="stats-card">
-                        <h3>Thống Kê</h3>
-                        <div class="stat-row">
-                            <span class="stat-label">Khuôn mặt phát hiện</span>
-                            <span class="stat-value" id="stat-faces">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Đã nhận diện</span>
-                            <span class="stat-value stat-value--success" id="stat-recognized">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Không xác định</span>
-                            <span class="stat-value stat-value--danger" id="stat-unknown">0</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Thời gian xử lý</span>
-                            <span class="stat-value" id="stat-inference">-- ms</span>
-                        </div>
-                    </div>
+
                     <div class="stats-card">
                         <h3>Lịch Sử Nhận Diện</h3>
                         <div class="recognition-log" id="recognition-log">
@@ -417,7 +399,7 @@
                         Nhấn nút Micro để bắt đầu nói
                     </div>
                     <div class="voice-chat-box" style="background: rgba(15, 23, 42, 0.8); border-radius: 14px; padding: 20px; text-align: left; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.05);">
-                        <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Bạn nói:</div>
+                        <div id="voice-user-label" style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Bạn nói:</div>
                         <div id="voice-user-transcript" style="color: #e2e8f0; margin-bottom: 18px; min-height: 24px; font-style: italic;">...</div>
                         <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Trợ lý trả lời:</div>
                         <div id="voice-bot-reply" style="color: #38bdf8; font-weight: 500; min-height: 24px;">...</div>

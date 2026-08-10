@@ -12,6 +12,7 @@ const state = {
     isCameraRunning: false,
     settings: null,
     statusPollTimer: null,
+    activeSpeakerName: null,
 };
 
 // ── DOM Helpers ────────────────────────────────────────────────
@@ -158,11 +159,11 @@ function stopCamera() {
     }
 
     // Reset stats
-    $('#stat-faces').textContent = '0';
-    $('#stat-recognized').textContent = '0';
-    $('#stat-unknown').textContent = '0';
-    $('#stat-inference').textContent = '-- ms';
-    $('#hud-fps').textContent = 'FPS: --';
+    if ($('#stat-faces')) $('#stat-faces').textContent = '0';
+    if ($('#stat-recognized')) $('#stat-recognized').textContent = '0';
+    if ($('#stat-unknown')) $('#stat-unknown').textContent = '0';
+    if ($('#stat-inference')) $('#stat-inference').textContent = '-- ms';
+    if ($('#hud-fps')) $('#hud-fps').textContent = 'FPS: --';
 }
 
 function startCameraStatusPoll() {
@@ -172,16 +173,16 @@ function startCameraStatusPoll() {
         if (!state.isCameraRunning) return;
         try {
             const status = await api('/camera/status');
-            $('#hud-fps').textContent = `FPS: ${status.fps}`;
-            $('#stat-inference').textContent = `${status.inference_ms} ms`;
+            if ($('#hud-fps')) $('#hud-fps').textContent = `FPS: ${status.fps}`;
+            if ($('#stat-inference')) $('#stat-inference').textContent = `${status.inference_ms} ms`;
 
             const faces = status.faces || [];
             const recognized = faces.filter((f) => f.label !== 'Unknown').length;
             const unknown = faces.filter((f) => f.label === 'Unknown').length;
 
-            $('#stat-faces').textContent = faces.length;
-            $('#stat-recognized').textContent = recognized;
-            $('#stat-unknown').textContent = unknown;
+            if ($('#stat-faces')) $('#stat-faces').textContent = faces.length;
+            if ($('#stat-recognized')) $('#stat-recognized').textContent = recognized;
+            if ($('#stat-unknown')) $('#stat-unknown').textContent = unknown;
 
             // Cập nhật recognition log
             updateRecognitionLog(faces);
@@ -197,14 +198,47 @@ function updateRecognitionLog(faces) {
 
     const now = new Date().toLocaleTimeString('vi-VN');
 
+    // Kiểm tra xem có ai đang nói hay không để cập nhật badge trên Camera HUD & Tên người phát ngôn
+    const speakingFace = faces.find((f) => f.is_speaking && f.label !== 'Unknown');
+    const camVoiceStatus = $('#cam-voice-status');
+    const userLabelElem = $('#voice-user-label');
+
+    if (speakingFace) {
+        state.activeSpeakerName = speakingFace.name || speakingFace.label;
+        if (camVoiceStatus) {
+            camVoiceStatus.textContent = `🗣️ ${state.activeSpeakerName} đang nói`;
+            camVoiceStatus.classList.add('speaking');
+        }
+        if (userLabelElem) {
+            userLabelElem.textContent = `${state.activeSpeakerName} nói:`;
+        }
+    } else {
+        const recognizedFace = faces.find((f) => f.label !== 'Unknown');
+        if (recognizedFace) {
+            state.activeSpeakerName = recognizedFace.name || recognizedFace.label;
+            if (userLabelElem && (userLabelElem.textContent === 'Bạn nói:' || userLabelElem.textContent.endsWith('nói:'))) {
+                userLabelElem.textContent = `${state.activeSpeakerName} nói:`;
+            }
+        }
+    }
+
     for (const face of faces) {
         if (face.label === 'Unknown') continue;
+
+        const isSpeakingTag = face.is_speaking ? ' <span class="speaking-badge" style="color:#06b6d4;font-weight:600;">🗣️ Đang nói</span>' : '';
 
         // Tránh duplicate gần nhau
         const existing = logContainer.querySelector(`[data-label="${face.label}"]`);
         if (existing) {
             existing.querySelector('.log-time').textContent = now;
-            existing.querySelector('.log-score').textContent = `(${face.score})`;
+            existing.querySelector('.log-score').innerHTML = `(${face.score})${isSpeakingTag}`;
+            if (face.is_speaking) {
+                existing.style.borderColor = '#06b6d4';
+                existing.style.background = 'rgba(6, 182, 212, 0.12)';
+            } else {
+                existing.style.borderColor = 'rgba(255,255,255,0.06)';
+                existing.style.background = 'rgba(255,255,255,0.02)';
+            }
             continue;
         }
 
@@ -216,10 +250,14 @@ function updateRecognitionLog(faces) {
         const entry = document.createElement('div');
         entry.className = 'log-entry';
         entry.dataset.label = face.label;
+        if (face.is_speaking) {
+            entry.style.borderColor = '#06b6d4';
+            entry.style.background = 'rgba(6, 182, 212, 0.12)';
+        }
         entry.innerHTML = `
             <span class="log-dot log-dot--success"></span>
-            <span class="log-name">${escapeHtml(face.label)}</span>
-            <span class="log-score">(${face.score})</span>
+            <span class="log-name">${escapeHtml(face.name || face.label)}</span>
+            <span class="log-score">(${face.score})${isSpeakingTag}</span>
             <span class="log-time">${now}</span>
         `;
 
@@ -823,6 +861,21 @@ function stopCurrentAudio() {
     if (updateStatusUIFunc) updateStatusUIFunc('Sẵn sàng', 'idle');
 }
 
+let isAudioUnlocked = false;
+
+function unlockAudio() {
+    if (isAudioUnlocked) return;
+    try {
+        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+        silentAudio.play().then(() => {
+            isAudioUnlocked = true;
+        }).catch(() => {});
+    } catch (e) {}
+}
+
+document.addEventListener('click', unlockAudio, { once: false });
+document.addEventListener('keydown', unlockAudio, { once: false });
+
 function playAudio(audioUrl, onEnded) {
     // 1. Dừng ngay lập tức câu đọc hiện tại (nếu đang đọc) để tránh đè tiếng
     stopCurrentAudio();
@@ -853,6 +906,7 @@ function playAudio(audioUrl, onEnded) {
 
     audio.onerror = (err) => {
         console.error('❌ Lỗi khi phát audio TTS:', err);
+        showToast('Lỗi khi tải hoặc phát file âm thanh', 'error');
         audioState.currentAudio = null;
         audioState.isSpeaking = false;
         if (updateStatusUIFunc) updateStatusUIFunc('Sẵn sàng', 'idle');
@@ -861,6 +915,7 @@ function playAudio(audioUrl, onEnded) {
 
     audio.play().catch((err) => {
         console.warn('⚠️ Audio playback bị từ chối hoặc chặn bởi trình duyệt:', err);
+        showToast('Trình duyệt đã chặn phát âm thanh. Vui lòng nhấp vào trang web để tương tác!', 'error');
         audioState.currentAudio = null;
         audioState.isSpeaking = false;
         if (updateStatusUIFunc) updateStatusUIFunc('Bấm 🎙️ để tiếp tục', 'idle');
@@ -974,8 +1029,8 @@ function initVoiceAssistant() {
     if (camMicBtn) camMicBtn.addEventListener('click', toggleListening);
 
     // Xử lý Thêm bong bóng Chat vào Chat Box ở Camera Sidebar
-    function appendChatBubble(sender, text) {
-        if (!camMessagesContainer) return;
+    function appendChatBubble(sender, text, speakerName) {
+        if (!camMessagesContainer) return null;
 
         // Xoá welcome message nếu còn
         const welcomeMsg = camMessagesContainer.querySelector('.chat-welcome-msg');
@@ -984,14 +1039,20 @@ function initVoiceAssistant() {
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble chat-bubble--${sender}`;
 
-        const senderLabel = sender === 'user' ? 'Bạn' : 'Trợ lý AI';
+        let senderLabel = 'Trợ lý AI';
+        if (sender === 'user') {
+            const name = speakerName || state.activeSpeakerName;
+            senderLabel = (name && name !== 'Unknown') ? name : 'Bạn';
+        }
+
         bubble.innerHTML = `
-            <div class="chat-bubble-sender">${senderLabel}</div>
+            <div class="chat-bubble-sender">${escapeHtml(senderLabel)}</div>
             <div class="chat-bubble-text">${escapeHtml(text)}</div>
         `;
 
         camMessagesContainer.appendChild(bubble);
         camMessagesContainer.scrollTop = camMessagesContainer.scrollHeight;
+        return bubble;
     }
 
     // Gửi chat text khi nhập từ input box
@@ -1035,9 +1096,15 @@ function initVoiceAssistant() {
         // Dừng âm thanh đang đọc ngay khi người dùng gửi câu mới
         stopCurrentAudio();
 
+        const currentSpeaker = state.activeSpeakerName || 'Bạn';
+        const userLabelElem = $('#voice-user-label');
+        if (userLabelElem) {
+            userLabelElem.textContent = (currentSpeaker !== 'Bạn' ? `${currentSpeaker} nói:` : 'Bạn nói:');
+        }
+
         // Cập nhật giao diện
         if (userTranscriptElem) userTranscriptElem.textContent = text;
-        appendChatBubble('user', text);
+        const userBubble = appendChatBubble('user', text, currentSpeaker);
         updateStatusUI('Đang suy nghĩ...', 'thinking');
 
         try {
@@ -1046,6 +1113,17 @@ function initVoiceAssistant() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text })
             });
+
+            // Nếu API trả về user_name đã được nhận diện từ backend
+            if (data.user_name && data.user_name !== 'Unknown') {
+                const verifiedName = data.user_name;
+                state.activeSpeakerName = verifiedName;
+                if (userLabelElem) userLabelElem.textContent = `${verifiedName} nói:`;
+                if (userBubble) {
+                    const senderDiv = userBubble.querySelector('.chat-bubble-sender');
+                    if (senderDiv) senderDiv.textContent = escapeHtml(verifiedName);
+                }
+            }
 
             const replyText = data.reply_text || '...';
             if (botReplyElem) botReplyElem.textContent = replyText;
