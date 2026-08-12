@@ -815,50 +815,103 @@ def api_chat():
 
     log.info(f"🎤 User input: '{user_transcript}' | Detected: '{current_name}' (Role: {current_role}, Gender: {current_gender})")
 
-    # 2. Xây dựng System Prompt linh hoạt theo vai trò & giới tính chuẩn xác
+    # 2. Xây dựng System Prompt linh hoạt theo vai trò & giới tính chuẩn xác (Bảo đảm xưng hô đồng nhất xuyên suốt)
+    pronoun_instruction = (
+        "QUY TẮC BẮT BUỘC VỀ XƯNG HÔ:\n"
+        "- Giữ nguyên xưng hô đồng nhất xuyên suốt TOÀN BỘ cuộc trò chuyện.\n"
+    )
+
+    is_lecturer = role_norm in ["giảng_viên", "lecturer", "giang_vien"]
+    is_student = role_norm in ["sinh_viên", "student", "sinh_vien"]
+    is_grad_or_phd = role_norm in ["học_viên_cao_học", "graduate_student", "hoc_vien_cao_hoc", "nghiên_cứu_sinh", "phd_student", "nghien_cuu_sinh"]
+
     if current_name and current_name != "Unknown":
-        if role_norm in ["giảng_viên", "lecturer", "giang_vien"]:
+        if is_lecturer:
+            title = "Cô" if is_female else "Thầy"
             system_prompt = (
-                f"Bạn là trợ lý AI lễ phép và trang trọng tại phòng nghiên cứu. "
-                f"Bạn đang nói chuyện với Giảng viên {current_name} (Giới tính: {'Nữ' if is_female else 'Nam'}). "
-                f"BẮT BUỘC xưng hô là 'Em' và BẮT BUỘC gọi đối phương là '{title} {current_name}'. "
-                f"TUYỆT ĐỐI KHÔNG dùng từ 'bạn', KHÔNG nhầm sang '{'Thầy' if is_female else 'Cô'}'. "
-                "Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+                f"Bạn là trợ lý AI lễ phép tại phòng nghiên cứu. "
+                f"Bạn đang nói chuyện với Giảng viên {current_name} (Giới tính: {'Nữ' if is_female else 'Nam'}).\n"
+                f"{pronoun_instruction}"
+                f"- BẮT BUỘC xưng hô là 'Em' và BẮT BUỘC gọi đối phương là '{title} {current_name}'. "
+                f"TUYỆT ĐỐI KHÔNG dùng từ 'bạn', KHÔNG nhầm sang '{'Thầy' if is_female else 'Cô'}'.\n"
+                "Trả lời ngắn gọn từ 1 đến 3 câu bằng tiếng Việt tự nhiên."
             )
-        elif role_norm in ["sinh_viên", "student", "sinh_vien"]:
+        elif is_grad_or_phd:
+            title = "Chị" if is_female else "Anh"
             system_prompt = (
-                f"Bạn là trợ lý AI thân thiện, cởi mở như bạn bè. "
-                f"Bạn đang nói chuyện với bạn sinh viên {current_name}. "
-                f"Hãy xưng hô là 'Mình' hoặc 'Tôi' và gọi tên '{current_name}' hoặc 'bạn'. "
-                "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy', KHÔNG dùng từ 'Cô', KHÔNG xưng 'Em' với sinh viên. "
-                "Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+                f"Bạn là trợ lý AI lễ phép tại phòng nghiên cứu. "
+                f"Bạn đang nói chuyện với Học viên/Nghiên cứu sinh {current_name} (Giới tính: {'Nữ' if is_female else 'Nam'}).\n"
+                f"{pronoun_instruction}"
+                f"- BẮT BUỘC xưng hô là 'Em' và BẮT BUỘC gọi đối phương là '{title} {current_name}'. "
+                f"TUYỆT ĐỐI KHÔNG dùng từ 'Thầy/Cô', KHÔNG dùng từ 'bạn'.\n"
+                "Trả lời ngắn gọn từ 1 đến 3 câu bằng tiếng Việt tự nhiên."
+            )
+        elif is_student or (not is_lecturer and not is_grad_or_phd):
+            system_prompt = (
+                f"Bạn là trợ lý AI thân thiện, cởi mở. "
+                f"Bạn đang nói chuyện với {current_name if current_name else 'bạn'}.\n"
+                f"{pronoun_instruction}"
+                f"- Hãy BẮT BUỘC xưng hô là 'Mình' hoặc 'Tôi' và gọi đối phương là tên '{current_name}' hoặc 'bạn'. "
+                f"TUYỆT ĐỐI KHÔNG dùng từ 'Thầy/Cô/Anh/Chị', KHÔNG xưng 'Em'.\n"
+                "Trả lời ngắn gọn từ 1 đến 3 câu bằng tiếng Việt tự nhiên."
             )
         else:
             system_prompt = (
-                f"Bạn là trợ lý AI lịch sự và hiếu khách. Bạn đang nói chuyện với {current_name}. "
-                "TUYỆT ĐỐI KHÔNG dùng từ 'Thầy' hay 'Cô'. "
-                "Hãy trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt tự nhiên."
+                f"Bạn là trợ lý AI thân thiện. Bạn đang nói chuyện với {current_name}.\n"
+                f"{pronoun_instruction}"
+                f"- Hãy BẮT BUỘC xưng hô là 'Mình' hoặc 'Tôi' và gọi đối phương là 'bạn'. "
+                f"TUYỆT ĐỐI KHÔNG dùng từ 'Thầy/Cô/Anh/Chị', KHÔNG xưng 'Em'.\n"
+                "Trả lời ngắn gọn từ 1 đến 3 câu bằng tiếng Việt tự nhiên."
             )
     else:
         system_prompt = (
-            "Bạn là trợ lý AI lịch sự và hiếu khách. "
-            "Bạn đang nói chuyện với một người chưa quen biết. Trả lời ngắn gọn từ 1 đến 2 câu bằng tiếng Việt."
+            f"Bạn là trợ lý AI thân thiện.\n"
+            f"{pronoun_instruction}"
+            f"- Hãy BẮT BUỘC xưng hô là 'Mình' hoặc 'Tôi' và gọi đối phương là 'bạn'. "
+            f"TUYỆT ĐỐI KHÔNG dùng từ 'Thầy/Cô/Anh/Chị', KHÔNG xưng 'Em'.\n"
+            "Trả lời ngắn gọn từ 1 đến 3 câu bằng tiếng Việt tự nhiên."
         )
 
-    # 3. Gọi Groq Cloud LLM
+    # 2.5 Lấy Context từ RAG Database dựa trên lịch sử đàm thoại
+    global _chat_history
+    rag_context = retrieve_context(user_transcript, history=_chat_history)
+    source_tag = "LLM"
+    if rag_context:
+        source_tag = "RAG"
+        system_prompt += (
+            f"\n\n[DỮ LIỆU THAM KHẢO RAG TỪ VĂN BẢN CHÍNH THỨC]:\n{rag_context}\n\n"
+            f"RÀNG BUỘC BẮT BUỘC KHI TRẢ LỜI RAG:\n"
+            f"1. CHÚ Ý TÀI LIỆU SCAN OCR KHÔNG DẤU: Văn bản tham khảo được bóc tách từ file scan nên nhiều từ không có dấu Tiếng Việt (ví dụ: 'tin chi' = 'tín chỉ', 'hoc phan' = 'học phần', 'tich luy' = 'tích lũy', 'diem' = 'điểm'). Bạn HÃY HIỂU CÁC TỪ KHÔNG DẤU NÀY LÀ TIẾNG VIỆT CHUẨN để giải thích chi tiết cho người dùng.\n"
+            f"2. Đọc và tổng hợp thông tin từ TẤT CẢ các đoạn trong [DỮ LIỆU THAM KHẢO RAG] ở trên.\n"
+            f"3. NẾU trong bất kỳ đoạn nào chứa các từ như 'tin chi', 'hoc phan', 'tich luy', 'giao duc', HÃY TRẢ LỜI TRỰC TIẾP định nghĩa, số lượng và quy định đó cho người dùng.\n"
+            f"4. TUYỆT ĐỐI KHÔNG từ chối hoặc trả lời rào trước rằng 'không có thông tin về tín chỉ' khi tài liệu có các từ 'tin chi' / 'hoc phan'.\n"
+        )
+
+    # 3. Xây dựng danh sách messages cho Groq Cloud LLM (Bao gồm System Prompt + Lịch sử hội thoại đàm thoại)
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Nối tối đa 6 tin nhắn gần đây nhất (3 lượt trao đổi)
+    for msg in _chat_history[-6:]:
+        messages.append(msg)
+        
+    messages.append({"role": "user", "content": user_transcript})
+
     try:
         completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_transcript}
-            ],
+            messages=messages,
             temperature=0.6,
-            max_tokens=150
+            max_tokens=300
         )
         raw_reply = completion.choices[0].message.content.strip()
         bot_reply = clean_text_for_tts(raw_reply)
         log.info(f"🤖 Groq LLM Reply: '{bot_reply}'")
+
+        # Cập nhật lịch sử đàm thoại đa lượt (Lưu tối đa 10 tin nhắn gần nhất)
+        _chat_history.append({"role": "user", "content": user_transcript})
+        _chat_history.append({"role": "assistant", "content": bot_reply})
+        if len(_chat_history) > 10:
+            _chat_history = _chat_history[-10:]
 
     except Exception as e:
         log.error(f"❌ Lỗi Groq API: {e}")
@@ -872,7 +925,8 @@ def api_chat():
         "audio_url": "/static/response.wav" if tts_success else None,
         "user_name": current_name,
         "user_role": current_role,
-        "user_gender": current_gender
+        "user_gender": current_gender,
+        "source": source_tag
     })
 
 
@@ -916,6 +970,47 @@ def clean_text_for_tts(text: str) -> str:
     # Chuẩn hóa khoảng trắng
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+_chat_history = []  # Lịch sử đàm thoại đa lượt dạng [{"role": "user"/"assistant", "content": text}]
+
+
+def retrieve_context(query: str, history: list = None) -> str:
+    """
+    Truy xuất 2 giai đoạn (Two-Stage Smart Retrieval):
+    1. Giai đoạn 1: Tìm kiếm trực tiếp bằng câu hỏi hiện tại (có tự động bổ sung từ khóa mã ngành CN1, CN2... nếu có).
+    2. Giai đoạn 2 (Fallback): Nếu câu hỏi độc lập không khớp RAG (do câu quá ngắn/nối tiếp như "cụ thể đi"), mới gộp lịch sử câu hỏi đàm thoại trước đó.
+    """
+    try:
+        from rag_pipeline import get_pipeline
+        pipeline = get_pipeline()
+
+        # Tự động mở rộng từ khóa nếu chứa mã ngành ngắn (CN1, CN2, CN12, SAT...)
+        search_query = query
+        words_upper = [w.upper() for w in re.findall(r'\b[A-Za-z0-9]+\b', query)]
+        acronyms = [w for w in words_upper if w.startswith('CN') or w in ['SAT', 'HSA', 'THPT']]
+        if acronyms:
+            search_query = f"mã ngành {' '.join(acronyms)} {query}"
+
+        # Giai đoạn 1: Thử truy vấn độc lập câu hỏi hiện tại
+        context = pipeline.query(search_query)
+        if context.strip():
+            return context
+
+        # Giai đoạn 2: Fallback gộp câu hỏi lịch sử nếu câu mới đứng độc lập chưa tìm ra kết quả
+        recent_user_queries = [
+            m["content"] for m in (history or []) if m.get("role") == "user"
+        ][-2:]
+
+        if recent_user_queries:
+            fallback_query = " ".join(recent_user_queries + [query])
+            log.info(f"🔄 Fallback nối lịch sử đàm thoại cho RAG Search: '{fallback_query}'")
+            return pipeline.query(fallback_query)
+
+        return ""
+    except Exception as e:
+        log.error(f"Lỗi truy xuất RAG: {e}")
+        return ""
 
 
 def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
@@ -1089,6 +1184,89 @@ def api_greet():
     })
 
 
+
+
+
+# ============================================================
+# RAG DOCUMENT MANAGEMENT API
+# ============================================================
+
+_APP_DIR = Path(__file__).resolve().parent          # backend/
+_PROJECT_ROOT = _APP_DIR.parent                     # OmniSense/
+RAG_DOCS_DIR = _PROJECT_ROOT / "data" / "rag_docs"
+RAG_DOCS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _safe_filename(original: str) -> str:
+    """Giữ ký tự tiếng Việt, chỉ loại bỏ ký tự nguy hiểm."""
+    import unicodedata
+    name = unicodedata.normalize("NFC", original)
+    # Chỉ xoá ký tự thật sự nguy hiểm cho filesystem
+    name = name.replace("..", "_").replace("/", "_").replace("\\", "_")
+    name = name.replace("\0", "")
+    return name.strip() or "unnamed"
+
+
+@app.route("/api/documents", methods=["GET"])
+def list_documents():
+    files = []
+    if RAG_DOCS_DIR.exists():
+        for filename in os.listdir(RAG_DOCS_DIR):
+            if filename.lower().endswith(('.pdf', '.txt', '.doc', '.docx')):
+                files.append(filename)
+    return jsonify({"documents": files})
+
+
+@app.route("/api/documents/upload", methods=["POST"])
+def upload_document():
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    if not file.filename.lower().endswith(('.pdf', '.txt', '.doc', '.docx')):
+        return jsonify({"error": "Invalid file format"}), 400
+
+    filename = _safe_filename(file.filename)
+    file_path = RAG_DOCS_DIR / filename
+    file.save(str(file_path))
+
+    # Trigger RAG pipeline processing (singleton — no reload)
+    try:
+        from rag_pipeline import get_pipeline
+        pipeline = get_pipeline()
+        success = pipeline.process_file(str(file_path))
+        if not success:
+            log.warning(f"Không trích xuất được text từ {filename}")
+    except Exception as e:
+        log.error(f"Lỗi xử lý RAG cho {filename}: {e}")
+        return jsonify({"error": "Lỗi khi nạp tài liệu vào RAG", "details": str(e)}), 500
+
+    return jsonify({"message": f"Đã tải lên và xử lý {filename} thành công"})
+
+
+@app.route("/api/documents/<filename>", methods=["DELETE"])
+def delete_document(filename):
+    file_path = RAG_DOCS_DIR / filename
+    if not file_path.exists():
+        return jsonify({"error": "File not found"}), 404
+
+    try:
+        from rag_pipeline import get_pipeline
+        pipeline = get_pipeline()
+        pipeline.remove_file(filename)
+    except Exception as e:
+        log.error(f"Lỗi xoá vector cho {filename}: {e}")
+
+    try:
+        os.remove(str(file_path))
+    except OSError as e:
+        log.error(f"Lỗi xoá file {filename}: {e}")
+        return jsonify({"error": "Lỗi khi xóa tài liệu", "details": str(e)}), 500
+
+    return jsonify({"message": f"Đã xóa {filename}"})
 
 
 

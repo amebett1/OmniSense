@@ -827,6 +827,116 @@ function loadSettingsUI() {
     $('#toggle-cuda').checked = s.cuda;
 }
 
+// ── RAG Documents Management ───────────────────────────────────
+function initRAGDocs() {
+    const dropzone = $('#rag-dropzone');
+    const fileInput = $('#rag-file-input');
+    
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--primary-color)';
+    });
+    
+    dropzone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border)';
+    });
+    
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border)';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            uploadRAGDocument(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            uploadRAGDocument(e.target.files[0]);
+        }
+    });
+
+    fetchRAGDocs();
+}
+
+async function fetchRAGDocs() {
+    try {
+        const data = await api('/documents');
+        renderRAGDocs(data.documents || []);
+    } catch (e) {
+        console.warn('Lỗi tải danh sách tài liệu RAG:', e);
+    }
+}
+
+function renderRAGDocs(docs) {
+    const list = $('#rag-doc-list');
+    if (!list) return;
+    
+    if (docs.length === 0) {
+        list.innerHTML = '<li style="color:var(--text-muted); font-size:14px;">Chưa có tài liệu nào.</li>';
+        return;
+    }
+    
+    list.innerHTML = docs.map(doc => {
+        const safe = escapeHtml(doc);
+        return `
+        <li style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:rgba(255,255,255,0.05); border-radius:6px;">
+            <span style="font-size:14px; font-weight:500;">${safe}</span>
+            <button class="btn btn--danger btn--sm rag-del-btn" data-filename="${safe}">Xoá</button>
+        </li>`;
+    }).join('');
+
+    // Delegated click handler — no inline JS
+    list.querySelectorAll('.rag-del-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            deleteRAGDocument(btn.dataset.filename);
+        });
+    });
+}
+
+async function uploadRAGDocument(file) {
+    const allowed = ['.pdf', '.txt', '.doc', '.docx'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!allowed.includes(ext)) {
+        return showToast('Định dạng tài liệu không hỗ trợ', 'error');
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        showToast(`Đang tải lên và phân tích ${file.name}... (quá trình này có thể mất vài chục giây cho PDF lớn)`, 'info');
+        const res = await fetch(`${API_BASE}/documents/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        
+        showToast('Tải tài liệu thành công!', 'success');
+        fetchRAGDocs();
+    } catch (err) {
+        showToast('Lỗi tải tài liệu: ' + err.message, 'error');
+    }
+}
+
+async function deleteRAGDocument(filename) {
+    if (!confirm(`Bạn có chắc muốn xoá tài liệu ${filename} không?`)) return;
+    try {
+        await api(`/documents/${filename}`, { method: 'DELETE' });
+        showToast('Đã xoá tài liệu', 'success');
+        fetchRAGDocs();
+    } catch (err) {
+        showToast('Lỗi xoá tài liệu: ' + err.message, 'error');
+    }
+}
+
+
 // ── Model Status Indicator ─────────────────────────────────────
 async function checkModelStatus() {
     try {
@@ -1035,7 +1145,7 @@ function initVoiceAssistant() {
     if (camMicBtn) camMicBtn.addEventListener('click', toggleListening);
 
     // Xử lý Thêm bong bóng Chat vào Chat Box ở Camera Sidebar
-    function appendChatBubble(sender, text, speakerName) {
+    function appendChatBubble(sender, text, speakerName, sourceTag) {
         if (!camMessagesContainer) return null;
 
         // Xoá welcome message nếu còn
@@ -1046,13 +1156,18 @@ function initVoiceAssistant() {
         bubble.className = `chat-bubble chat-bubble--${sender}`;
 
         let senderLabel = 'Trợ lý AI';
-        if (sender === 'user') {
+        if (sender === 'bot' && sourceTag) {
+            const badgeClass = sourceTag === 'RAG' ? 'tag-rag' : 'tag-llm';
+            senderLabel = `Trợ lý AI <span class="source-tag ${badgeClass}">[${sourceTag}]</span>`;
+        } else if (sender === 'user') {
             const name = speakerName || state.activeSpeakerName;
             senderLabel = (name && name !== 'Unknown') ? name : 'Bạn';
         }
 
+        const senderHtml = (sender === 'bot' && sourceTag) ? senderLabel : escapeHtml(senderLabel);
+
         bubble.innerHTML = `
-            <div class="chat-bubble-sender">${escapeHtml(senderLabel)}</div>
+            <div class="chat-bubble-sender">${senderHtml}</div>
             <div class="chat-bubble-text">${escapeHtml(text)}</div>
         `;
 
@@ -1133,7 +1248,7 @@ function initVoiceAssistant() {
 
             const replyText = data.reply_text || '...';
             if (botReplyElem) botReplyElem.textContent = replyText;
-            appendChatBubble('bot', replyText);
+            appendChatBubble('bot', replyText, null, data.source);
 
             if (data.audio_url) {
                 playAudio(data.audio_url);
@@ -1159,6 +1274,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initModal();
     initListFilters();
     initSettings();
+    initRAGDocs();
     initVoiceAssistant();
     fetchUsers();
 
