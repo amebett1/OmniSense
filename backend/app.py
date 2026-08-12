@@ -932,6 +932,8 @@ def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
     # Phân loại vai trò rõ ràng
     is_lecturer = role_norm in ["giảng_viên", "lecturer", "giang_vien"]
     is_student = role_norm in ["sinh_viên", "student", "sinh_vien"]
+    is_grad_student = role_norm in ["học_viên_cao_học", "graduate_student", "hoc_vien_cao_hoc"]
+    is_phd_student = role_norm in ["nghiên_cứu_sinh", "phd_student", "nghien_cuu_sinh"]
 
     title = ("Cô" if is_female else "Thầy") if is_lecturer else ""
 
@@ -939,6 +941,9 @@ def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
         log.warning("Chưa cấu hình GROQ_API_KEY trong .env! Trả về câu chào mặc định.")
         if is_lecturer:
             return f"Em chào {title} {name} ạ!"
+        elif is_grad_student or is_phd_student:
+            pronoun = "Chị" if is_female else "Anh"
+            return f"Em chào {pronoun} {name} ạ!"
         elif is_student:
             return f"Chào bạn {name} nhé! Chúc bạn một ngày tốt lành."
         else:
@@ -951,6 +956,9 @@ def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
         log.error(f"Lỗi khởi tạo Groq client: {e}")
         if is_lecturer:
             return f"Em chào {title} {name} ạ!"
+        elif is_grad_student or is_phd_student:
+            pronoun = "Chị" if is_female else "Anh"
+            return f"Em chào {pronoun} {name} ạ!"
         elif is_student:
             return f"Chào bạn {name} nhé!"
         else:
@@ -967,6 +975,18 @@ def generate_role_greeting(name: str, role: str, gender: str = "male") -> str:
             "KHÔNG dùng emoji, KHÔNG dùng markdown (**), KHÔNG ghi chú hành động như [cười]."
         )
         user_prompt = f"Tạo câu chào lễ phép tới Giảng viên {title} {name}."
+    elif is_grad_student or is_phd_student:
+        pronoun = "Chị" if is_female else "Anh"
+        title_name = f"{'Học viên' if is_grad_student else 'Nghiên cứu sinh'} {name}"
+        system_prompt = (
+            f"Bạn là trợ lý AI lễ phép tại phòng nghiên cứu. "
+            f"Bạn đang gửi câu chào tới {title_name} (Giới tính: {'Nữ' if is_female else 'Nam'}). "
+            f"BẮT BUỘC xưng hô là 'Em' và gọi đối phương là '{pronoun} {name}'. "
+            f"TUYỆT ĐỐI KHÔNG dùng từ 'bạn', KHÔNG dùng 'Thầy' hay 'Cô'. "
+            "RÀNG BUỘC BẮT BUỘC: Trả lời siêu ngắn gọn từ 1 đến 2 câu, dưới 20 từ. "
+            "KHÔNG dùng emoji, KHÔNG dùng markdown (**), KHÔNG ghi chú hành động như [cười]."
+        )
+        user_prompt = f"Tạo câu chào lễ phép tới {title_name}."
     elif is_student:
         system_prompt = (
             f"Bạn là trợ lý AI thân thiện, cởi mở như bạn bè tại phòng nghiên cứu. "

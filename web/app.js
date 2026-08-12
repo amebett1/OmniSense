@@ -519,7 +519,13 @@ function renderUserList() {
         return;
     }
 
-    const roleLabels = { lecturer: 'Giảng viên', student: 'Sinh viên', other: 'Khác' };
+    const roleLabels = { 
+        lecturer: 'Giảng viên', 
+        student: 'Sinh viên', 
+        graduate_student: 'Học viên cao học',
+        phd_student: 'Nghiên cứu sinh',
+        other: 'Khác' 
+    };
     const genderLabels = { male: 'Nam', female: 'Nữ' };
 
     grid.innerHTML = filtered.map((u) => {
