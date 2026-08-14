@@ -199,7 +199,7 @@ function startCameraStatusPoll() {
 
 function updateRecognitionLog(faces) {
     const logContainer = $('#recognition-log');
-    if (!faces || faces.length === 0) return;
+    if (!logContainer || !faces || faces.length === 0) return;
 
     const now = new Date().toLocaleTimeString('vi-VN');
 
@@ -524,12 +524,12 @@ function renderUserList() {
         return;
     }
 
-    const roleLabels = { 
-        lecturer: 'Giảng viên', 
-        student: 'Sinh viên', 
+    const roleLabels = {
+        lecturer: 'Giảng viên',
+        student: 'Sinh viên',
         graduate_student: 'Học viên cao học',
         phd_student: 'Nghiên cứu sinh',
-        other: 'Khác' 
+        other: 'Khác'
     };
     const genderLabels = { male: 'Nam', female: 'Nữ' };
 
@@ -769,6 +769,7 @@ async function initSettings() {
             threshold: parseFloat(thresholdSlider.value),
             threads: parseInt(threadsSlider.value),
             det_size: parseInt($('#param-det-size').value),
+            frame_skip: parseInt($('#param-frame-skip')?.value || '2'),
             camera_index: parseInt($('#param-camera-index').value),
             cuda: $('#toggle-cuda').checked,
         };
@@ -780,7 +781,7 @@ async function initSettings() {
                 body: JSON.stringify(settings),
             });
             state.settings = settings;
-            showToast('Đã lưu cài đặt (cần khởi động lại server để áp dụng model mới)', 'success');
+            showToast('Đã lưu cài đặt (cài đặt FPS áp dụng lập tức)', 'success');
         } catch (err) {
             showToast('Lỗi lưu cài đặt: ' + err.message, 'error');
         }
@@ -793,6 +794,7 @@ async function initSettings() {
             threshold: 0.40,
             threads: 8,
             det_size: 640,
+            frame_skip: 2,
             camera_index: 0,
             cuda: false,
         };
@@ -828,6 +830,7 @@ function loadSettingsUI() {
     $('#param-threads').value = s.threads;
     $('#threads-value').textContent = s.threads;
     $('#param-det-size').value = s.det_size;
+    if ($('#param-frame-skip') && s.frame_skip) $('#param-frame-skip').value = s.frame_skip;
     $('#param-camera-index').value = s.camera_index;
     $('#toggle-cuda').checked = s.cuda;
 }
@@ -836,7 +839,7 @@ function loadSettingsUI() {
 function initRAGDocs() {
     const dropzone = $('#rag-dropzone');
     const fileInput = $('#rag-file-input');
-    
+
     if (!dropzone || !fileInput) return;
 
     dropzone.addEventListener('click', () => fileInput.click());
@@ -845,12 +848,12 @@ function initRAGDocs() {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--primary-color)';
     });
-    
+
     dropzone.addEventListener('dragleave', (e) => {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--border)';
     });
-    
+
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--border)';
@@ -880,12 +883,12 @@ async function fetchRAGDocs() {
 function renderRAGDocs(docs) {
     const list = $('#rag-doc-list');
     if (!list) return;
-    
+
     if (docs.length === 0) {
         list.innerHTML = '<li style="color:var(--text-muted); font-size:14px;">Chưa có tài liệu nào.</li>';
         return;
     }
-    
+
     list.innerHTML = docs.map(doc => {
         const safe = escapeHtml(doc);
         return `
@@ -909,10 +912,10 @@ async function uploadRAGDocument(file) {
     if (!allowed.includes(ext)) {
         return showToast('Định dạng tài liệu không hỗ trợ', 'error');
     }
-    
+
     const formData = new FormData();
     formData.append('file', file);
-    
+
     try {
         showToast(`Đang tải lên và phân tích ${file.name}... (quá trình này có thể mất vài chục giây cho PDF lớn)`, 'info');
         const res = await fetch(`${API_BASE}/documents/upload`, {
@@ -920,9 +923,9 @@ async function uploadRAGDocument(file) {
             body: formData
         });
         const data = await res.json();
-        
+
         if (!res.ok) throw new Error(data.error || 'Upload failed');
-        
+
         showToast('Tải tài liệu thành công!', 'success');
         fetchRAGDocs();
     } catch (err) {
@@ -990,8 +993,8 @@ function unlockAudio() {
         const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
         silentAudio.play().then(() => {
             isAudioUnlocked = true;
-        }).catch(() => {});
-    } catch (e) {}
+        }).catch(() => { });
+    } catch (e) { }
 }
 
 document.addEventListener('click', unlockAudio, { once: false });

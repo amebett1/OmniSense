@@ -76,6 +76,7 @@ DEFAULT_SETTINGS = {
     "det_size": 640,
     "camera_index": 0,
     "cuda": False,
+    "frame_skip": 2,
 }
 
 logging.basicConfig(
@@ -240,50 +241,81 @@ def camera_loop(init_event: threading.Event = None):
     fps_counter = 0
     fps_timer = time.perf_counter()
 
+    frame_count = 0
+    cached_faces = []
+    cached_results = []
+
     while state.is_camera_running:
         ret, frame = cap.read()
         if not ret:
-            time.sleep(0.05)
+            time.sleep(0.01)
             continue
 
-        # Nhận diện khuôn mặt
+        frame_count += 1
+        skip_interval = max(1, int(state.settings.get("frame_skip", 2)))
+        run_ai = (frame_count % skip_interval == 0) or not cached_faces
+
         start_t = time.perf_counter()
         if state.model_ready and state.model is not None and state.db is not None:
-            threshold = state.settings.get("threshold", pipeline.COSINE_THRESHOLD)
-            annotated, faces = process_frame(frame, state.model, state.db, threshold)
+            if run_ai:
+                threshold = state.settings.get("threshold", pipeline.COSINE_THRESHOLD)
+                annotated, faces = process_frame(frame, state.model, state.db, threshold)
+                cached_faces = faces
 
-            # Thu thập kết quả nhận diện từ danh sách faces đã xử lý MAR & Active Speaker
-            results = []
-            metadata = load_metadata()
-            for face in faces:
-                label = getattr(face, "label", "Unknown")
-                score = getattr(face, "score", 0.0)
-                mar = getattr(face, "mar", 0.0)
-                mar_std = getattr(face, "mar_std", 0.0)
-                is_speaking = getattr(face, "is_speaking", False)
-                meta = metadata.get(label, {})
-                results.append(
-                    {
-                        "label": label,
-                        "name": meta.get("name", label),
-                        "role": meta.get("role", "khác"),
-                        "gender": meta.get("gender", "male"),
-                        "score": round(float(score), 3),
-                        "mar": mar,
-                        "mar_std": mar_std,
-                        "is_speaking": is_speaking,
-                        "bbox": [int(v) for v in face.bbox],
-                    }
+                # Thu thập kết quả nhận diện từ danh sách faces đã xử lý MAR & Active Speaker
+                results = []
+                metadata = load_metadata()
+                for face in faces:
+                    label = getattr(face, "label", "Unknown")
+                    score = getattr(face, "score", 0.0)
+                    mar = getattr(face, "mar", 0.0)
+                    mar_std = getattr(face, "mar_std", 0.0)
+                    is_speaking = getattr(face, "is_speaking", False)
+                    meta = metadata.get(label, {})
+                    results.append(
+                        {
+                            "label": label,
+                            "name": meta.get("name", label),
+                            "role": meta.get("role", "khác"),
+                            "gender": meta.get("gender", "male"),
+                            "score": round(float(score), 3),
+                            "mar": mar,
+                            "mar_std": mar_std,
+                            "is_speaking": is_speaking,
+                            "bbox": [int(v) for v in face.bbox],
+                        }
+                    )
+                cached_results = results
+                state.recognition_results = results
+                state.inference_ms = round((time.perf_counter() - start_t) * 1000, 1)
+            else:
+                # Fast render từ cache bounding boxes (~0.5ms per frame)
+                annotated = frame.copy()
+                for face in cached_faces:
+                    label = getattr(face, "label", "Unknown")
+                    score = getattr(face, "score", 0.0)
+                    mar = getattr(face, "mar", 0.0)
+                    is_speaking = getattr(face, "is_speaking", False)
+                    pipeline._draw_face_annotation(annotated, face.bbox, label, score, mar=mar, is_speaking=is_speaking)
+
+                cv2.putText(
+                    annotated,
+                    f"Faces: {len(cached_faces)}",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (255, 255, 255),
+                    2,
+                    cv2.LINE_AA
                 )
-            state.recognition_results = results
+                state.recognition_results = cached_results
         else:
             annotated = frame.copy()
             state.recognition_results = []
+            cached_faces = []
+            cached_results = []
 
-        inference_ms = (time.perf_counter() - start_t) * 1000
-        state.inference_ms = round(inference_ms, 1)
-
-        # Tính FPS
+        # Tính FPS truyền tải thực tế
         fps_counter += 1
         elapsed = time.perf_counter() - fps_timer
         if elapsed >= 1.0:
@@ -317,14 +349,14 @@ def generate_mjpeg():
     while state.is_camera_running:
         if state.latest_annotated is not None:
             ret, buffer = cv2.imencode(
-                ".jpg", state.latest_annotated, [cv2.IMWRITE_JPEG_QUALITY, 80]
+                ".jpg", state.latest_annotated, [cv2.IMWRITE_JPEG_QUALITY, 75]
             )
             if ret:
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
                 )
-        time.sleep(0.033)  # ~30fps max
+        time.sleep(0.015)  # Hỗ trợ tối đa ~60fps stream
 
 
 # ============================================================
