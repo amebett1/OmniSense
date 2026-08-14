@@ -140,6 +140,7 @@ class AppState:
         self.inference_ms = 0.0
         self.model_ready = False
         self._camera_thread = None
+        self.cam_init_error = None
 
 
 state = AppState()
@@ -203,17 +204,26 @@ def initialize_model():
 # ============================================================
 
 
-def camera_loop():
+def camera_loop(init_event: threading.Event = None):
     """Vòng lặp camera chạy trong thread riêng."""
     import face_recognition_pipeline as pipeline
 
     cam_index = state.settings.get("camera_index", 0)
     log.info(f"Khởi động camera index={cam_index}")
+    state.cam_init_error = None
 
     cap = cv2.VideoCapture(cam_index)
+    if not cap.isOpened() and os.name == "nt":
+        log.warning(f"cv2.VideoCapture({cam_index}) thất bại, thử cv2.CAP_DSHOW...")
+        cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
+
     if not cap.isOpened():
-        log.error(f"Không thể mở camera index={cam_index}")
+        err_msg = f"Không thể mở camera index={cam_index}. Thiết bị có thể đang bận hoặc bị chiếm quyền."
+        log.error(err_msg)
+        state.cam_init_error = err_msg
         state.is_camera_running = False
+        if init_event:
+            init_event.set()
         return
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -222,6 +232,10 @@ def camera_loop():
 
     with state.camera_lock:
         state.camera = cap
+
+    # Đánh dấu mở camera thành công
+    if init_event:
+        init_event.set()
 
     fps_counter = 0
     fps_timer = time.perf_counter()
@@ -281,9 +295,20 @@ def camera_loop():
         state.latest_annotated = annotated
 
     # Giải phóng camera
-    cap.release()
+    try:
+        cap.release()
+    except Exception as e:
+        log.warning(f"Lỗi khi release camera: {e}")
+
     with state.camera_lock:
         state.camera = None
+
+    state.is_camera_running = False
+    state.latest_frame = None
+    state.latest_annotated = None
+    state.recognition_results = []
+    state.fps = 0.0
+    state.inference_ms = 0.0
     log.info("Camera đã dừng.")
 
 
@@ -620,20 +645,52 @@ def api_recognize():
 # --- Camera ---
 @app.route("/api/camera/start", methods=["POST"])
 def api_camera_start():
+    # Nếu thread cũ chưa kết thúc, chờ nó giải phóng tối đa 2s
+    if state._camera_thread and state._camera_thread.is_alive():
+        state.is_camera_running = False
+        state._camera_thread.join(timeout=2.0)
+        if state._camera_thread.is_alive():
+            return jsonify({"error": "Camera đang giải phóng tài nguyên, vui lòng thử lại sau vài giây"}), 500
+
     if state.is_camera_running:
         return jsonify({"error": "Camera đang chạy rồi"}), 400
 
+    # Reset state trước khi khởi động
+    state.latest_frame = None
+    state.latest_annotated = None
+    state.recognition_results = []
+    state.fps = 0.0
+    state.inference_ms = 0.0
+    state.cam_init_error = None
+
+    init_event = threading.Event()
     state.is_camera_running = True
-    state._camera_thread = threading.Thread(target=camera_loop, daemon=True)
+    state._camera_thread = threading.Thread(target=camera_loop, args=(init_event,), daemon=True)
     state._camera_thread.start()
+
+    # Đợi tối đa 4.0 giây để camera phần cứng khởi tạo xong
+    started_ok = init_event.wait(timeout=4.0)
+    if not started_ok or state.cam_init_error or not state.is_camera_running:
+        state.is_camera_running = False
+        err_msg = state.cam_init_error or "Không thể kết nối thiết bị camera (Timeout)"
+        return jsonify({"error": err_msg}), 500
+
     return jsonify({"success": True})
 
 
 @app.route("/api/camera/stop", methods=["POST"])
 def api_camera_stop():
     state.is_camera_running = False
-    if state._camera_thread:
-        state._camera_thread.join(timeout=3)
+    if state._camera_thread and state._camera_thread.is_alive():
+        state._camera_thread.join(timeout=3.0)
+
+    state.latest_frame = None
+    state.latest_annotated = None
+    state.recognition_results = []
+    state.fps = 0.0
+    state.inference_ms = 0.0
+    state._camera_thread = None
+
     return jsonify({"success": True})
 
 

@@ -80,12 +80,16 @@ function initCamera() {
             btnStart.disabled = true;
             showToast('Đang khởi động camera...', 'info');
 
+            // Xoá mjpegImg cũ nếu có
+            const oldImg = $('#camera-mjpeg');
+            if (oldImg) oldImg.remove();
+
             await api('/camera/start', { method: 'POST' });
 
-            // Chuyển video element thành img để hiển thị MJPEG stream
+            // Chuyển video element thành img để hiển thị MJPEG stream (thêm timestamp tránh browser cache connection)
             const mjpegImg = document.createElement('img');
             mjpegImg.id = 'camera-mjpeg';
-            mjpegImg.src = `${API_BASE}/video_feed`;
+            mjpegImg.src = `${API_BASE}/video_feed?t=${Date.now()}`;
             mjpegImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
             mjpegImg.alt = 'Camera Feed';
 
@@ -102,6 +106,7 @@ function initCamera() {
 
             showToast('Camera đã khởi động với nhận diện', 'success');
         } catch (err) {
+            stopCamera();
             btnStart.disabled = false;
             showToast('Lỗi khởi động camera: ' + err.message, 'error');
         }
@@ -109,8 +114,8 @@ function initCamera() {
 
     btnStop.addEventListener('click', async () => {
         try {
-            await api('/camera/stop', { method: 'POST' });
             stopCamera();
+            await api('/camera/stop', { method: 'POST' });
             showToast('Camera đã dừng', 'info');
         } catch (err) {
             showToast('Lỗi dừng camera: ' + err.message, 'error');
