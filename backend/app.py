@@ -176,14 +176,15 @@ def save_metadata(metadata: dict):
 
 
 def initialize_model():
-    """Khởi tạo model InsightFace và load database (chạy nền)."""
-    log.info("Đang khởi tạo model InsightFace...")
+    """Khởi tạo model InsightFace, load database và warm-up toàn bộ AI models (chạy nền)."""
+    model_name = state.settings.get("model", "buffalo_sc")
+    log.info(f"⚙️ [AI Core] Khởi tạo mô hình nhận diện khuôn mặt: InsightFace ({model_name})...")
     try:
         import face_recognition_pipeline as pipeline
 
         # Cập nhật cấu hình từ settings
         s = state.settings
-        pipeline.MODEL_NAME = s.get("model", "buffalo_sc")
+        pipeline.MODEL_NAME = model_name
         pipeline.COSINE_THRESHOLD = s.get("threshold", 0.40)
         pipeline.INTRA_OP_NUM_THREADS = s.get("threads", 8)
         pipeline.DET_SIZE = (s.get("det_size", 640), s.get("det_size", 640))
@@ -191,12 +192,45 @@ def initialize_model():
 
         state.model = init_model()
         state.db = load_database(state.model)
+
+        # 🔥 1. Warm-up InsightFace (Detector + Landmark 3D + Recognizer) bằng dummy frame
+        log.info(f"🔥 [Warm-up] Đang kích hoạt trước InsightFace ONNX Model ({model_name})...")
+        try:
+            dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+            cv2.circle(dummy_img, (320, 320), 120, (180, 180, 180), -1)
+            cv2.circle(dummy_img, (280, 280), 15, (50, 50, 50), -1)
+            cv2.circle(dummy_img, (360, 280), 15, (50, 50, 50), -1)
+            _ = state.model.get(dummy_img)
+            log.info(f"✅ [InsightFace] Model '{model_name}' đã sẵn sàng! Database: {len(state.db.labels)} người (Zero-lag camera).")
+        except Exception as warmup_err:
+            log.warning(f"InsightFace warm-up warning: {warmup_err}")
+
         state.model_ready = True
-        log.info(
-            f"Model sẵn sàng! Database: {len(state.db.labels)} người"
-        )
+
+        # 🔥 2. Warm-up RAG Pipeline & Piper TTS trong thread riêng để không làm chậm khởi động chính
+        def _background_warmup():
+            try:
+                log.info("🔥 [Warm-up] Đang nạp RAG Embedding Model (all-MiniLM-L6-v2 + ChromaDB)...")
+                from rag_pipeline import get_pipeline
+                rag_pipe = get_pipeline()
+                _ = rag_pipe.query("warmup query")
+                log.info("✅ [RAG Pipeline] Model 'sentence-transformers/all-MiniLM-L6-v2' đã nạp xong vào RAM!")
+            except Exception as rag_err:
+                log.warning(f"RAG warm-up warning: {rag_err}")
+
+            try:
+                log.info(f"🔥 [Warm-up] Đang nạp Piper TTS Voice Model ({PIPER_MODEL.name})...")
+                _ = get_piper_voice()
+                log.info(f"✅ [Piper TTS] Voice model '{PIPER_MODEL.name}' đã nạp xong vào RAM!")
+            except Exception as tts_err:
+                log.warning(f"Piper TTS warm-up warning: {tts_err}")
+
+            log.info("🎉 [System Ready] Tất cả mô hình AI (InsightFace, RAG, Groq LLM, Piper TTS) đã sẵn sàng phục vụ!")
+
+        threading.Thread(target=_background_warmup, daemon=True).start()
+
     except Exception as e:
-        log.error(f"Lỗi khởi tạo model: {e}")
+        log.error(f"❌ Lỗi khởi tạo model nhận diện: {e}")
         state.model_ready = False
 
 
@@ -885,6 +919,7 @@ def api_chat():
     if not user_transcript:
         return jsonify({"error": "Văn bản đầu vào không được để trống"}), 400
 
+    load_dotenv(override=True)
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return jsonify({"error": "Chưa cấu hình GROQ_API_KEY trên Server (file .env)"}), 500
@@ -985,26 +1020,43 @@ def api_chat():
         
     messages.append({"role": "user", "content": user_transcript})
 
-    try:
-        completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.6,
-            max_tokens=300
-        )
-        raw_reply = completion.choices[0].message.content.strip()
-        bot_reply = clean_text_for_tts(raw_reply)
-        log.info(f"🤖 Groq LLM Reply: '{bot_reply}'")
+    model_candidates = [
+        "groq/compound",
+        "groq/compound-mini",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "llama3-70b-8192",
+    ]
+    bot_reply = None
+    last_error = None
 
-        # Cập nhật lịch sử đàm thoại đa lượt (Lưu tối đa 10 tin nhắn gần nhất)
-        _chat_history.append({"role": "user", "content": user_transcript})
-        _chat_history.append({"role": "assistant", "content": bot_reply})
-        if len(_chat_history) > 10:
-            _chat_history = _chat_history[-10:]
+    for model_name in model_candidates:
+        try:
+            completion = groq_client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.6,
+                max_tokens=300
+            )
+            raw_reply = completion.choices[0].message.content.strip()
+            bot_reply = clean_text_for_tts(raw_reply)
+            log.info(f"🤖 Groq LLM ({model_name}) Reply: '{bot_reply}'")
+            break
+        except Exception as e:
+            last_error = e
+            log.warning(f"⚠️ Model Groq '{model_name}' thất bại ({e}), thử model tiếp theo...")
 
-    except Exception as e:
-        log.error(f"❌ Lỗi Groq API: {e}")
-        return jsonify({"error": f"Lỗi xử lý LLM: {str(e)}"}), 500
+    if not bot_reply:
+        log.error(f"❌ Tất cả model Groq đều thất bại. Lỗi cuối: {last_error}")
+        return jsonify({"error": f"Lỗi xử lý LLM: {str(last_error)}"}), 500
+
+    # Cập nhật lịch sử đàm thoại đa lượt (Lưu tối đa 10 tin nhắn gần nhất)
+    _chat_history.append({"role": "user", "content": user_transcript})
+    _chat_history.append({"role": "assistant", "content": bot_reply})
+    if len(_chat_history) > 10:
+        _chat_history = _chat_history[-10:]
 
     # 4. Piper TTS
     tts_success = synthesize_piper_tts(bot_reply, RESPONSE_WAV_PATH)
@@ -1031,6 +1083,7 @@ GREETING_WAV_PATH = STATIC_DIR / "greeting.wav"
 def clean_text_for_tts(text: str) -> str:
     """
     Chuẩn hóa văn bản cho Piper TTS:
+    - Mở rộng các từ viết tắt phổ biến (CLB -> câu lạc bộ, TS -> tiến sĩ, CNTT -> công nghệ thông tin...).
     - Loại bỏ emoji, ghi chú trong ngoặc [hành động] hoặc (hành động).
     - Bỏ định dạng Markdown (*, **, #, `).
     - Làm sạch khoảng trắng dư thừa.
@@ -1038,6 +1091,37 @@ def clean_text_for_tts(text: str) -> str:
     # Xóa ghi chú hành động dạng [cười], (cười)
     text = re.sub(r"\[.*?\]", "", text)
     text = re.sub(r"\(.*?\)", "", text)
+
+    # Từ điển mở rộng các từ viết tắt cứng (Case-insensitive)
+    acronym_map = {
+        r"\bts\b|\bts\.\b": "tiến sĩ",
+        r"\bths\b|\bths\.\b": "thạc sĩ",
+        r"\bpgs\b|\bpgs\.\b": "phó giáo sư",
+        r"\bgs\b|\bgs\.\b": "giáo sư",
+        r"\bks\b|\bks\.\b": "kỹ sư",
+        r"\bbs\b|\bbs\.\b": "bác sĩ",
+        r"\bcn\b|\bcn\.\b": "cử nhân",
+        r"\bncs\b": "nghiên cứu sinh",
+        r"\bclb\b": "câu lạc bộ",
+        r"\bcntt\b": "công nghệ thông tin",
+        r"\bkhmt\b": "khoa học máy tính",
+        r"\bhttt\b": "hệ thống thông tin",
+        r"\bktpm\b": "kỹ thuật phần mềm",
+        r"\bdtvt\b": "điện tử viễn thông",
+        r"\battt\b": "an toàn thông tin",
+        r"\bkhcn\b": "khoa học công nghệ",
+        r"\bcsvc\b": "cơ sở vật chất",
+        r"\bctdt\b": "chương trình đào tạo",
+        r"\bthpt\b": "trung học phổ thông",
+        r"\bđhqghn\b|\bvnu\b": "đại học quốc gia hà nội",
+        r"\buet\b": "trường đại học công nghệ",
+        r"\bsv\b": "sinh viên",
+        r"\bgv\b": "giảng viên",
+        r"\btp\.\b|\btp\b": "thành phố",
+    }
+
+    for pattern, replacement in acronym_map.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # Xóa ký tự Markdown
     text = re.sub(r"[\*\#\`\_\~]", "", text)
@@ -1401,10 +1485,16 @@ if __name__ == "__main__":
     init_thread = threading.Thread(target=initialize_model, daemon=True)
     init_thread.start()
 
-    log.info("=" * 60)
-    log.info("  OMNISENSE BACKEND API")
-    log.info(f"  Web UI: http://localhost:5000")
-    log.info(f"  Database: {DATABASE_DIR}")
-    log.info("=" * 60)
+    model_name = state.settings.get("model", "buffalo_sc")
+    log.info("=" * 68)
+    log.info("               🚀 OMNISENSE SYSTEM AI CORE STARTUP")
+    log.info("=" * 68)
+    log.info(f"  🌐 Web Interface:      http://localhost:5000")
+    log.info(f"  📁 Face Database:       {DATABASE_DIR}")
+    log.info(f"  🧠 Face Recognition:   InsightFace ({model_name}) ONNX CPU (8 threads)")
+    log.info(f"  📚 RAG Embedding:       sentence-transformers/all-MiniLM-L6-v2 + ChromaDB")
+    log.info(f"  🤖 Groq Cloud LLM:      llama-3.3-70b-versatile / groq/compound (Auto Fallback)")
+    log.info(f"  🗣️ Voice Synthesis:     Piper TTS ({PIPER_MODEL.name})")
+    log.info("=" * 68)
 
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
